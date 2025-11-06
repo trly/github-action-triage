@@ -1,12 +1,9 @@
-from fastapi import FastAPI
+from github_action_triage.app.factory import create_app
 
-app = FastAPI()
-
-@app.get("/")
-async def root():
-    return {"message": "Hello from github-action-triage!"}
+app = create_app()
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

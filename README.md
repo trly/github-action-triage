@@ -58,6 +58,9 @@ src/github_action_triage/
 git clone https://github.com/trly/github-action-triage.git
 cd github-action-triage
 
+# Initialize issue tracking (required for development)
+bd onboard
+
 # Install Python dependencies
 uv sync --group dev
 
@@ -102,11 +105,13 @@ uv run pytest tests/test_app_events.py -v
 The service is configured via environment variables with the `TRIAGE_` prefix:
 
 ```bash
-export TRIAGE_GITHUB_APP_ID="your-app-id"
-export TRIAGE_GITHUB_PRIVATE_KEY="your-private-key"
+export TRIAGE_GITHUB_APP_ID="123456"
+export TRIAGE_GITHUB_PRIVATE_KEY="$(cat path/to/your-app.pem)"
 export TRIAGE_GITHUB_WEBHOOK_SECRET="your-webhook-secret"
-export TRIAGE_OPENAI_API_KEY="your-openai-key"
+export TRIAGE_OPENAI_API_KEY="sk-..."
 ```
+
+**Note**: `TRIAGE_GITHUB_PRIVATE_KEY` should contain the full PEM content (including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` lines), not just a file path.
 
 ## Current Status
 
@@ -132,3 +137,4 @@ export TRIAGE_OPENAI_API_KEY="your-openai-key"
 2. Implement to satisfy tests
 3. Ensure all tests pass: `uv run pytest`
 4. Verify server boots: `uv run poe dev`
+

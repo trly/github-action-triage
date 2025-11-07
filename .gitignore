@@ -12,3 +12,6 @@ wheels/
 # Local Development
 .env
 .envrc
+
+# AI planning documents (ephemeral)
+history/

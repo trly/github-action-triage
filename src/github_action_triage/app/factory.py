@@ -1,6 +1,6 @@
 import logging
 from fastapi import FastAPI
-from githubkit import GitHub
+from githubkit import GitHub, AppAuthStrategy
 from github_action_triage.app.web.api import router as github_router
 from github_action_triage.app.api import TriageService
 from github_action_triage.app.infra.github_client import (
@@ -13,9 +13,14 @@ from github_action_triage.app.config.settings import Settings, get_settings
 
 def create_github_client(settings: Settings) -> GitHub:
     """Create and configure a GitHubKit client."""
-    # For now, create an unauthenticated client
-    # TODO: Implement GitHub App authentication
-    return GitHub()
+    print("Creating GitHub client...")
+    auth = AppAuthStrategy(
+        app_id=settings.github_app_id,
+        private_key=settings.github_private_key,
+    )
+    client = GitHub(auth=auth)
+    print("GitHub client created")
+    return client
 
 
 def create_triage_service(settings: Settings) -> TriageService:
@@ -33,11 +38,12 @@ def create_triage_service(settings: Settings) -> TriageService:
 
 
 def create_app() -> FastAPI:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s:     %(name)s - %(message)s",
-    )
-    
+    # Temporarily disable logging setup
+    # logging.basicConfig(
+    #     level=logging.INFO,
+    #     format="%(levelname)s:     %(name)s - %(message)s",
+    # )
+
     app = FastAPI(
         title="GitHub Action Triage",
         description="Automated CI/CD failure analysis and remediation",

@@ -13,7 +13,9 @@ from github_action_triage.app.config.settings import Settings
 @pytest.fixture
 def mock_github_client():
     client = MagicMock()
+    client.rest.apps.async_create_installation_access_token = AsyncMock()
     client.rest.actions.async_get_job_for_workflow_run = AsyncMock()
+    client.rest.actions.async_download_job_logs_for_workflow_run = AsyncMock()
     return client
 
 
@@ -50,33 +52,48 @@ def failure_event():
 async def test_fetches_job_details_and_constructs_context(
     mock_github_client, settings, failure_event, monkeypatch
 ):
+    # Mock the installation token response
+    mock_token_response = MagicMock()
+    mock_token_response.parsed_data.token = "installation_token_123"
+    mock_github_client.rest.apps.async_create_installation_access_token.return_value = (
+        mock_token_response
+    )
+
+    # Mock the new GitHub client creation
+    mock_installation_client = MagicMock()
+    mock_installation_client.rest.actions.async_get_job_for_workflow_run = AsyncMock()
+    mock_installation_client.rest.actions.async_download_job_logs_for_workflow_run = AsyncMock()
+
+    # Mock GitHub constructor
+    from githubkit import GitHub
+    def mock_github_constructor(token):
+        return mock_installation_client
+    monkeypatch.setattr("githubkit.GitHub", mock_github_constructor)
+
     # Mock the GitHub API response
     mock_response = MagicMock()
     mock_response.parsed_data = MagicMock(
         head_sha="abc123def456",
         head_branch="main",
         html_url="https://github.com/test-org/test-repo/actions/runs/123/job/456",
-        logs_url="https://api.github.com/repos/test-org/test-repo/actions/jobs/456/logs",
     )
-    mock_github_client.rest.actions.async_get_job_for_workflow_run.return_value = (
+    mock_installation_client.rest.actions.async_get_job_for_workflow_run.return_value = (
         mock_response
     )
 
     # Mock the log download
     mock_logs = b"Step 1: Install dependencies\nError: npm install failed\nExiting with code 1"
-
-    async def mock_download_logs(self, logs_url: str) -> bytes:
-        return mock_logs
-
-    monkeypatch.setattr(
-        GitHubContextAdapter, "_download_logs", mock_download_logs
+    mock_logs_response = MagicMock()
+    mock_logs_response.content = mock_logs
+    mock_installation_client.rest.actions.async_download_job_logs_for_workflow_run.return_value = (
+        mock_logs_response
     )
 
     adapter = GitHubContextAdapter(settings, mock_github_client)
     context = await adapter.fetch_failure_context(failure_event)
 
     # Verify the GitHub API was called correctly
-    mock_github_client.rest.actions.async_get_job_for_workflow_run.assert_called_once_with(
+    mock_installation_client.rest.actions.async_get_job_for_workflow_run.assert_called_once_with(
         owner="test-org",
         repo="test-repo",
         job_id=456,
@@ -93,10 +110,27 @@ async def test_fetches_job_details_and_constructs_context(
 
 @pytest.mark.asyncio
 async def test_handles_api_errors_gracefully(
-    mock_github_client, settings, failure_event
+    mock_github_client, settings, failure_event, monkeypatch
 ):
+    # Mock the installation token response
+    mock_token_response = MagicMock()
+    mock_token_response.parsed_data.token = "installation_token_123"
+    mock_github_client.rest.apps.async_create_installation_access_token.return_value = (
+        mock_token_response
+    )
+
+    # Mock the new GitHub client creation
+    mock_installation_client = MagicMock()
+    mock_installation_client.rest.actions.async_get_job_for_workflow_run = AsyncMock()
+
+    # Mock GitHub constructor
+    from githubkit import GitHub
+    def mock_github_constructor(token):
+        return mock_installation_client
+    monkeypatch.setattr("githubkit.GitHub", mock_github_constructor)
+
     # Simulate an API error
-    mock_github_client.rest.actions.async_get_job_for_workflow_run.side_effect = (
+    mock_installation_client.rest.actions.async_get_job_for_workflow_run.side_effect = (
         Exception("API error")
     )
 

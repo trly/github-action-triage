@@ -54,11 +54,18 @@ src/github_action_triage/
 ### Setup
 
 ```bash
-# Install dependencies
+# Clone the repository
+git clone https://github.com/trly/github-action-triage.git
+cd github-action-triage
+
+# Install Python dependencies
 uv sync --group dev
 
-# Install package in editable mode (required for imports to work)
+# Install the project in editable mode (required for imports)
 uv pip install -e .
+
+# Verify setup by running tests
+uv run pytest
 ```
 
 ### Running the Service
@@ -125,4 +132,3 @@ export TRIAGE_OPENAI_API_KEY="your-openai-key"
 2. Implement to satisfy tests
 3. Ensure all tests pass: `uv run pytest`
 4. Verify server boots: `uv run poe dev`
-

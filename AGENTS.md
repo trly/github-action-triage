@@ -223,3 +223,4 @@ Configuration uses `TRIAGE_` prefix:
 - [GitHubKit Documentation](https://yanyongyu.github.io/githubkit/)
 - [PydanticAI Documentation](https://ai.pydantic.dev/)
 
+BEFORE ANYTHING ELSE: run 'bd onboard' and follow the instructions

@@ -28,7 +28,7 @@ def create_triage_service(settings: Settings) -> TriageService:
     github_client = create_github_client(settings)
     context_provider = GitHubContextAdapter(settings, github_client)
     agent = ActionTriageAgent(settings)
-    actuator = GitHubRepositoryActuator(settings, github_client)
+    actuator = GitHubRepositoryActuator(settings)
     
     return TriageService(
         context_provider=context_provider,

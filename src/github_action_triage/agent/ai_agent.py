@@ -130,11 +130,30 @@ class ActionTriageAgent(RemediationAgent):
         # Format initial prompt with failure context
         initial_prompt = self._format_initial_prompt(context)
         
+        # Configure allowed tools list
+        allowed_tool_names = ["submit_proposal"]
+        if has_mcp:
+            # Add Sourcegraph MCP tools
+            allowed_tool_names.extend([
+                "sg_read_file",
+                "sg_list_files",
+                "sg_list_repos",
+                "sg_keyword_search",
+                "sg_nls_search",
+                "sg_go_to_definition",
+                "sg_find_references",
+                "sg_commit_search",
+                "sg_diff_search",
+                "sg_compare_revisions",
+                "sg_get_contributor_repos",
+            ])
+        
         # Configure Claude SDK client with model and API key from settings
         options = ClaudeAgentOptions(
             model=self._settings.claude_model,
             system_prompt=system_prompt,
-            allowed_tools=[submit_tool],
+            tools=[submit_tool],
+            allowed_tools=allowed_tool_names,
             mcp_servers=mcp_servers or {},
             max_turns=self._settings.claude_max_turns,
             env={"ANTHROPIC_API_KEY": self._settings.anthropic_api_key.get_secret_value()},

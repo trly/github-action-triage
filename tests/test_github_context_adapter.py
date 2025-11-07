@@ -25,7 +25,7 @@ def settings():
         github_app_id="12345",
         github_private_key="test-key",
         github_webhook_secret="test-secret",
-        openai_api_key="test-api-key",
+        anthropic_api_key="test-api-key",
     )
 
 
@@ -63,6 +63,7 @@ async def test_fetches_job_details_and_constructs_context(
     mock_installation_client = MagicMock()
     mock_installation_client.rest.actions.async_get_job_for_workflow_run = AsyncMock()
     mock_installation_client.rest.actions.async_download_job_logs_for_workflow_run = AsyncMock()
+    mock_installation_client.rest.actions.async_get_workflow_run = AsyncMock()
 
     # Mock GitHub constructor
     from githubkit import GitHub
@@ -70,7 +71,7 @@ async def test_fetches_job_details_and_constructs_context(
         return mock_installation_client
     monkeypatch.setattr("githubkit.GitHub", mock_github_constructor)
 
-    # Mock the GitHub API response
+    # Mock the GitHub API response for job
     mock_response = MagicMock()
     mock_response.parsed_data = MagicMock(
         head_sha="abc123def456",
@@ -87,6 +88,15 @@ async def test_fetches_job_details_and_constructs_context(
     mock_logs_response.content = mock_logs
     mock_installation_client.rest.actions.async_download_job_logs_for_workflow_run.return_value = (
         mock_logs_response
+    )
+    
+    # Mock the workflow run response for workflow path
+    mock_run_response = MagicMock()
+    mock_run_response.parsed_data = MagicMock(
+        path=".github/workflows/ci.yml"
+    )
+    mock_installation_client.rest.actions.async_get_workflow_run.return_value = (
+        mock_run_response
     )
 
     adapter = GitHubContextAdapter(settings, mock_github_client)
@@ -105,6 +115,7 @@ async def test_fetches_job_details_and_constructs_context(
     assert context.branch_ref == "refs/heads/main"
     assert context.job_html_url == "https://github.com/test-org/test-repo/actions/runs/123/job/456"
     assert "npm install failed" in context.logs_excerpt
+    assert context.workflow_file_path == ".github/workflows/ci.yml"
     assert context.recent_commits == ["abc123def456"]
 
 

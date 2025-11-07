@@ -70,7 +70,7 @@ def test_failure_context_captures_enriched_metadata():
         job_html_url="https://github.com/test-org/test-repo/actions/runs/123/job/456",
         logs_url="https://api.github.com/repos/test-org/test-repo/actions/jobs/456/logs",
         logs_excerpt="Error: npm install failed\n  at install.js:42",
-        workflow_file=None,
+        workflow_file_path=None,
         recent_commits=["abc123def456"],
     )
 

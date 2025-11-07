@@ -7,7 +7,7 @@ from github_action_triage.app.infra.github_client import (
     GitHubContextAdapter,
     GitHubRepositoryActuator,
 )
-from github_action_triage.agent.ai_agent import PydanticAIRemediationAgent
+from github_action_triage.agent.ai_agent import ActionTriageAgent
 from github_action_triage.app.config.settings import Settings, get_settings
 
 
@@ -27,8 +27,8 @@ def create_triage_service(settings: Settings) -> TriageService:
     """Factory for creating a fully wired TriageService."""
     github_client = create_github_client(settings)
     context_provider = GitHubContextAdapter(settings, github_client)
-    agent = PydanticAIRemediationAgent(settings)
-    actuator = GitHubRepositoryActuator(settings)
+    agent = ActionTriageAgent(settings)
+    actuator = GitHubRepositoryActuator(settings, github_client)
     
     return TriageService(
         context_provider=context_provider,
@@ -52,6 +52,7 @@ def create_app() -> FastAPI:
 
     # Wire dependencies
     settings = get_settings()
+    app.state.settings = settings
     app.state.triage_service = create_triage_service(settings)
 
     app.include_router(github_router)

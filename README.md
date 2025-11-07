@@ -26,7 +26,7 @@ src/github_action_triage/
 │   └── factory.py           # FastAPI application factory
 └── agent/                   # Agent layer
     ├── ports.py             # Protocol definitions for external services
-    └── ai_agent.py          # PydanticAI remediation agent
+    └── ai_agent.py          # Claude Agent SDK remediation agent
 ```
 
 ### Key Components
@@ -108,28 +108,46 @@ The service is configured via environment variables with the `TRIAGE_` prefix:
 export TRIAGE_GITHUB_APP_ID="123456"
 export TRIAGE_GITHUB_PRIVATE_KEY="$(cat path/to/your-app.pem)"
 export TRIAGE_GITHUB_WEBHOOK_SECRET="your-webhook-secret"
-export TRIAGE_OPENAI_API_KEY="sk-..."
+export TRIAGE_ANTHROPIC_API_KEY="sk-ant-..."
+export TRIAGE_SOURCEGRAPH_TOKEN="sgp_..."
+export TRIAGE_SOURCEGRAPH_MCP_URL="http://localhost:3000"
 ```
 
-**Note**: `TRIAGE_GITHUB_PRIVATE_KEY` should contain the full PEM content (including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` lines), not just a file path.
+**Notes**:
+- `TRIAGE_GITHUB_PRIVATE_KEY` should contain the full PEM content (including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` lines), not just a file path.
+- `TRIAGE_GITHUB_WEBHOOK_SECRET` should be a secure random string. Generate one with:
+  ```bash
+  # Generate a secure random secret
+  openssl rand -hex 32
+  
+  # Or use Ruby
+  ruby -rsecurerandom -e 'puts SecureRandom.hex(32)'
+  
+  # Or use Python
+  python3 -c 'import secrets; print(secrets.token_hex(32))'
+  ```
+  Configure this same secret in your GitHub App webhook settings for signature verification.
 
 ## Current Status
 
-**Phase: Scaffold Complete**
+**Phase: Core Features Implemented**
 
 - ✅ Package structure established
 - ✅ Domain models and protocols defined
 - ✅ FastAPI routing configured
-- ✅ Infrastructure adapter skeletons in place
-- ⏳ GitHub API integration (not implemented)
-- ⏳ AI-powered diagnosis (not implemented)
-- ⏳ Automated fix application (not implemented)
+- ✅ Infrastructure adapter implementations
+- ✅ GitHub API integration via GitHubKit
+- ✅ AI-powered diagnosis via Claude Agent SDK
+- ✅ Background processing via FastAPI BackgroundTasks
+- ✅ Comment posting to workflow runs and commits
+- ✅ Sourcegraph MCP integration for code analysis
+- ⏳ Automated fix application (in progress)
 
 ## Resources
 
 - [FastAPI Documentation](https://fastapi.tiangolo.com)
 - [GitHubKit Documentation](https://yanyongyu.github.io/githubkit/)
-- [PydanticAI Documentation](https://ai.pydantic.dev/)
+- [Claude Agent SDK Documentation](https://github.com/anthropics/anthropic-sdk-python)
 
 ## Contributing
 

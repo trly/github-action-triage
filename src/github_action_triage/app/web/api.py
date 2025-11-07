@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Request, HTTPException, status
+from fastapi import APIRouter, Request, HTTPException, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from githubkit.webhooks import parse
 from githubkit.versions.latest.models import WebhookWorkflowJobCompleted
@@ -8,13 +8,14 @@ from github_action_triage.app.web.github_webhooks import (
     log_workflow_job_failure,
     map_workflow_job_event,
 )
+from github_action_triage.app.web.signature import verify_github_signature
 
 router = APIRouter(prefix="/github", tags=["github"])
 logger = logging.getLogger(__name__)
 
 
 @router.post("/webhook", status_code=status.HTTP_202_ACCEPTED)
-async def handle_webhook(request: Request) -> JSONResponse:
+async def handle_webhook(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
     event_name = request.headers.get("X-GitHub-Event")
     if not event_name:
         raise HTTPException(
@@ -23,6 +24,15 @@ async def handle_webhook(request: Request) -> JSONResponse:
         )
 
     body = await request.body()
+    
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    settings = request.app.state.settings
+    
+    if not verify_github_signature(body, signature, settings.github_webhook_secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook signature",
+        )
 
     try:
         event = parse(event_name, body)
@@ -35,34 +45,15 @@ async def handle_webhook(request: Request) -> JSONResponse:
 
     if is_failure_workflow_job(event):
         log_workflow_job_failure(event)
-        await handle_workflow_job_failure(request, event)
+        triage_event = map_workflow_job_event(event)
+        service = request.app.state.triage_service
+        background_tasks.add_task(service.process_failure_async, triage_event)
 
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED, content={"status": "accepted"}
     )
 
 
-async def handle_workflow_job_failure(
-    request: Request, event: WebhookWorkflowJobCompleted
-) -> None:
-    logger.info("Starting failure analysis and remediation")
-
-    # Map webhook event to domain event
-    triage_event = map_workflow_job_event(event)
-    
-    # Get triage service from app state
-    service = request.app.state.triage_service
-    
-    # Process the failure
-    result = await service.handle_failure(triage_event)
-    
-    logger.info(
-        "AI remediation result",
-        extra={"triage_outcome": result.outcome.value, "result_message": result.message},
-    )
-
-
 @router.get("/health")
 async def health_check():
     return {"status": "healthy"}
-

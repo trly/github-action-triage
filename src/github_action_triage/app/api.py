@@ -28,9 +28,35 @@ class TriageService:
 
     async def handle_failure(self, event: WorkflowRunFailureEvent) -> TriageResult:
         context = await self._context_provider.fetch_failure_context(event)
-        await self._agent.prepare(context)
+        proposal = await self._agent.diagnose_and_propose(context)
         
         return TriageResult(
-            outcome=TriageOutcome.DEFERRED,
-            message="Failure context captured for AI triage",
+            outcome=TriageOutcome.ANALYZED,
+            message=f"Root cause identified: {proposal.identified_issue}. Fix effort: {proposal.fix_effort}",
         )
+
+    async def process_failure_async(self, event: WorkflowRunFailureEvent) -> None:
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            context = await self._context_provider.fetch_failure_context(event)
+            proposal = await self._agent.diagnose_and_propose(context)
+            
+            logger.info(
+                "Diagnosis complete",
+                extra={
+                    "issue": proposal.identified_issue,
+                    "effort": proposal.fix_effort,
+                }
+            )
+            
+            success = await self._actuator.apply_fix(event, proposal)
+            
+            if success:
+                logger.info("Fix applied successfully")
+            else:
+                logger.warning("Failed to apply fix")
+                
+        except Exception as exc:
+            logger.exception("Error during background triage processing", exc_info=exc)

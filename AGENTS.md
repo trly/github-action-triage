@@ -313,8 +313,9 @@ async def test_service_handles_expected_input():
 
 - **FastAPI**: Web framework
 - **Pydantic**: Data validation and settings
-- **PydanticAI**: AI agent framework (planned integration)
-- **GitHubKit**: GitHub API client (planned integration)
+- **Claude Agent SDK**: AI agent framework via Anthropic API
+- **GitHubKit**: GitHub API client
+- **Sourcegraph MCP**: Code analysis and search capabilities
 - **pytest + pytest-asyncio**: Testing framework
 
 ## Environment Variables
@@ -324,19 +325,24 @@ Configuration uses `TRIAGE_` prefix:
 - `TRIAGE_GITHUB_APP_ID`: GitHub App ID
 - `TRIAGE_GITHUB_PRIVATE_KEY`: GitHub App private key
 - `TRIAGE_GITHUB_WEBHOOK_SECRET`: Webhook verification secret
-- `TRIAGE_OPENAI_API_KEY`: OpenAI API key for AI features
+- `TRIAGE_ANTHROPIC_API_KEY`: Anthropic API key for Claude Agent SDK
+- `TRIAGE_SOURCEGRAPH_TOKEN`: Sourcegraph access token for MCP integration
+- `TRIAGE_SOURCEGRAPH_MCP_URL`: Sourcegraph MCP server URL
 
 ## Current Implementation Status
 
-**Scaffold Phase Complete**
+**Core Features Implemented**
 
 - ✅ Package structure established
 - ✅ Domain models and protocols defined
 - ✅ FastAPI routing configured
-- ✅ Infrastructure adapter skeletons in place
-- ⏳ GitHub API integration (stubbed)
-- ⏳ AI-powered diagnosis (stubbed)
-- ⏳ Automated fix application (stubbed)
+- ✅ Infrastructure adapter implementations
+- ✅ GitHub API integration via GitHubKit
+- ✅ AI-powered diagnosis via Claude Agent SDK
+- ✅ Background processing via FastAPI BackgroundTasks
+- ✅ Comment posting to workflow runs and commits
+- ✅ Sourcegraph MCP integration for code analysis
+- ⏳ Automated fix application (in progress)
 
 ## When Working on This Codebase
 
@@ -351,4 +357,4 @@ Configuration uses `TRIAGE_` prefix:
 - [FastAPI Documentation](https://fastapi.tiangolo.com)
 - [Pydantic V2 Documentation](https://docs.pydantic.dev/latest/)
 - [GitHubKit Documentation](https://yanyongyu.github.io/githubkit/)
-- [PydanticAI Documentation](https://ai.pydantic.dev/)
+- [Claude Agent SDK Documentation](https://github.com/anthropics/anthropic-sdk-python)

@@ -72,17 +72,26 @@ async def test_triage_service_contract():
         ),
     )
 
+    # Mock the agent to return a proposal
+    from github_action_triage.agent.ports import RemediationProposal
+    mock_proposal = RemediationProposal(
+        identified_issue="Test issue",
+        fix_effort="small",
+        remediation_plan="Test plan"
+    )
+    mock_agent.diagnose_and_propose.return_value = mock_proposal
+
     result = await service.handle_failure(event)
     
     # Verify context provider was called
     mock_context_provider.fetch_failure_context.assert_called_once_with(event)
     
-    # Verify agent prepare was called with context
-    mock_agent.prepare.assert_called_once_with(mock_context)
+    # Verify agent diagnose_and_propose was called with context
+    mock_agent.diagnose_and_propose.assert_called_once_with(mock_context)
     
-    # Verify outcome is still deferred
-    assert result.outcome == TriageOutcome.DEFERRED
-    assert "context captured" in result.message.lower()
+    # Verify outcome is ANALYZED
+    assert result.outcome == TriageOutcome.ANALYZED
+    assert "Test issue" in result.message
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,6 @@
 import json
+import hmac
+import hashlib
 import pytest
 from httpx import AsyncClient, ASGITransport
 from github_action_triage.app.factory import create_app
@@ -70,7 +72,8 @@ def stub_githubkit_parse(monkeypatch):
 
 
 @pytest.fixture
-async def test_client():
+async def test_client(monkeypatch):
+    monkeypatch.setenv("TRIAGE_GITHUB_WEBHOOK_SECRET", "test-secret")
     app = create_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -93,6 +96,16 @@ def workflow_job_payload(action: str = "completed", conclusion: str = "failure")
     }
 
 
+def compute_signature(payload: bytes, secret: str = "test-secret") -> str:
+    """Compute GitHub webhook signature."""
+    computed_hmac = hmac.new(
+        secret.encode("utf-8"),
+        payload,
+        hashlib.sha256
+    )
+    return f"sha256={computed_hmac.hexdigest()}"
+
+
 @pytest.mark.asyncio
 async def test_logs_failure_workflow_job(caplog, test_client, monkeypatch):
     caplog.set_level("INFO")
@@ -108,11 +121,15 @@ async def test_logs_failure_workflow_job(caplog, test_client, monkeypatch):
         )
     
     monkeypatch.setattr(TriageService, "handle_failure", mock_handle_failure)
-    
+
+    payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
     response = await test_client.post(
-        "/github/webhook",
-        headers={"X-GitHub-Event": "workflow_job"},
-        json=workflow_job_payload(action="completed", conclusion="failure"),
+    "/github/webhook",
+    headers={
+            "X-GitHub-Event": "workflow_job",
+            "X-Hub-Signature-256": compute_signature(payload),
+        },
+        content=payload,
     )
     assert response.status_code == 202
     assert "workflow_job.completed.failure" in caplog.text
@@ -123,35 +140,40 @@ async def test_invokes_failure_handler_for_job_failure(caplog, test_client, monk
     caplog.set_level("INFO")
     
     # Mock the triage service to avoid real API calls
-    from github_action_triage.app.api import TriageService, TriageResult
-    from github_action_triage.app.events.outcomes import TriageOutcome
+    from github_action_triage.app.api import TriageService
     
-    async def mock_handle_failure(self, event):
-        return TriageResult(
-            outcome=TriageOutcome.DEFERRED,
-            message="Failure context captured for AI triage",
-        )
+    async def mock_process_failure_async(self, event):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("Background triage processing started")
     
-    # Patch the TriageService handle_failure method
-    monkeypatch.setattr(TriageService, "handle_failure", mock_handle_failure)
-    
+    # Patch the TriageService process_failure_async method
+    monkeypatch.setattr(TriageService, "process_failure_async", mock_process_failure_async)
+
+    payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
     response = await test_client.post(
-        "/github/webhook",
-        headers={"X-GitHub-Event": "workflow_job"},
-        json=workflow_job_payload(action="completed", conclusion="failure"),
+    "/github/webhook",
+    headers={
+            "X-GitHub-Event": "workflow_job",
+            "X-Hub-Signature-256": compute_signature(payload),
+        },
+        content=payload,
     )
     assert response.status_code == 202
-    assert "Starting failure analysis and remediation" in caplog.text
-    assert "AI remediation result" in caplog.text
+    assert "Background triage processing started" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_ignores_non_matching_action(caplog, test_client):
     caplog.set_level("INFO")
+    payload = json.dumps(workflow_job_payload(action="queued", conclusion="failure")).encode()
     response = await test_client.post(
         "/github/webhook",
-        headers={"X-GitHub-Event": "workflow_job"},
-        json=workflow_job_payload(action="queued", conclusion="failure"),
+        headers={
+            "X-GitHub-Event": "workflow_job",
+            "X-Hub-Signature-256": compute_signature(payload),
+        },
+        content=payload,
     )
     assert response.status_code == 202
     assert "workflow_job.completed.failure" not in caplog.text
@@ -160,10 +182,14 @@ async def test_ignores_non_matching_action(caplog, test_client):
 @pytest.mark.asyncio
 async def test_ignores_non_failure_conclusion(caplog, test_client):
     caplog.set_level("INFO")
+    payload = json.dumps(workflow_job_payload(action="completed", conclusion="success")).encode()
     response = await test_client.post(
         "/github/webhook",
-        headers={"X-GitHub-Event": "workflow_job"},
-        json=workflow_job_payload(action="completed", conclusion="success"),
+        headers={
+            "X-GitHub-Event": "workflow_job",
+            "X-Hub-Signature-256": compute_signature(payload),
+        },
+        content=payload,
     )
     assert response.status_code == 202
     assert "workflow_job.completed.failure" not in caplog.text
@@ -172,10 +198,14 @@ async def test_ignores_non_failure_conclusion(caplog, test_client):
 @pytest.mark.asyncio
 async def test_ignores_different_event_type(caplog, test_client):
     caplog.set_level("INFO")
+    payload = json.dumps({"ref": "refs/heads/main", "repository": {"full_name": "test-org/test-repo"}}).encode()
     response = await test_client.post(
         "/github/webhook",
-        headers={"X-GitHub-Event": "push"},
-        json={"ref": "refs/heads/main", "repository": {"full_name": "test-org/test-repo"}},
+        headers={
+            "X-GitHub-Event": "push",
+            "X-Hub-Signature-256": compute_signature(payload),
+        },
+        content=payload,
     )
     assert response.status_code == 202
     assert "workflow_job.completed.failure" not in caplog.text
@@ -192,11 +222,44 @@ async def test_rejects_missing_header(test_client):
 
 
 @pytest.mark.asyncio
-async def test_rejects_invalid_payload(test_client):
+async def test_rejects_invalid_signature(test_client):
+    payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
     response = await test_client.post(
         "/github/webhook",
-        headers={"X-GitHub-Event": "workflow_job"},
-        json={"invalid": "payload"},
+        headers={
+            "X-GitHub-Event": "workflow_job",
+            "X-Hub-Signature-256": "sha256=invalid_signature",
+        },
+        content=payload,
+    )
+    assert response.status_code == 401
+    assert "Invalid webhook signature" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_rejects_missing_signature(test_client):
+    payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
+    response = await test_client.post(
+        "/github/webhook",
+        headers={
+            "X-GitHub-Event": "workflow_job",
+        },
+        content=payload,
+    )
+    assert response.status_code == 401
+    assert "Invalid webhook signature" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_rejects_invalid_payload(test_client):
+    payload = json.dumps({"invalid": "payload"}).encode()
+    response = await test_client.post(
+        "/github/webhook",
+        headers={
+            "X-GitHub-Event": "workflow_job",
+            "X-Hub-Signature-256": compute_signature(payload),
+        },
+        content=payload,
     )
     assert response.status_code == 400
     assert "Invalid" in response.json()["detail"] or "payload" in response.json()["detail"]

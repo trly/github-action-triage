@@ -1,28 +1,34 @@
 import logging
+import os
 from fastapi import FastAPI
-from githubkit import GitHub
+from githubkit import GitHub, AppAuthStrategy
 from github_action_triage.app.web.api import router as github_router
 from github_action_triage.app.api import TriageService
 from github_action_triage.app.infra.github_client import (
     GitHubContextAdapter,
     GitHubRepositoryActuator,
 )
-from github_action_triage.agent.ai_agent import PydanticAIRemediationAgent
+from github_action_triage.agent.ai_agent import ActionTriageAgent
 from github_action_triage.app.config.settings import Settings, get_settings
 
 
 def create_github_client(settings: Settings) -> GitHub:
     """Create and configure a GitHubKit client."""
-    # For now, create an unauthenticated client
-    # TODO: Implement GitHub App authentication
-    return GitHub()
+    print("Creating GitHub client...")
+    auth = AppAuthStrategy(
+        app_id=settings.github_app_id,
+        private_key=settings.github_private_key,
+    )
+    client = GitHub(auth=auth)
+    print("GitHub client created")
+    return client
 
 
 def create_triage_service(settings: Settings) -> TriageService:
     """Factory for creating a fully wired TriageService."""
     github_client = create_github_client(settings)
     context_provider = GitHubContextAdapter(settings, github_client)
-    agent = PydanticAIRemediationAgent(settings)
+    agent = ActionTriageAgent(settings)
     actuator = GitHubRepositoryActuator(settings)
     
     return TriageService(
@@ -33,11 +39,12 @@ def create_triage_service(settings: Settings) -> TriageService:
 
 
 def create_app() -> FastAPI:
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, log_level, logging.INFO),
         format="%(levelname)s:     %(name)s - %(message)s",
     )
-    
+
     app = FastAPI(
         title="GitHub Action Triage",
         description="Automated CI/CD failure analysis and remediation",
@@ -46,6 +53,7 @@ def create_app() -> FastAPI:
 
     # Wire dependencies
     settings = get_settings()
+    app.state.settings = settings
     app.state.triage_service = create_triage_service(settings)
 
     app.include_router(github_router)

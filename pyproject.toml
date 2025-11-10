@@ -16,6 +16,7 @@ dev = [
     "poethepoet>=0.31.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
     "uvicorn>=0.32.0",
 ]
 
@@ -26,3 +27,13 @@ testpaths = ["tests"]
 
 [tool.poe.tasks]
 dev = "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+lint = "ruff check src/ tests/"
+format = "ruff format src/ tests/"
+format-check = "ruff format --check src/ tests/"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "DTZ", "T10", "PIE", "RET", "SIM", "ARG", "PTH"]

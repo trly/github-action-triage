@@ -59,52 +59,54 @@ async def test_create_issue_formats_body_correctly(
     # Arrange
     mock_app_client = MagicMock()
     mock_installation_client = MagicMock()
-    
+
     # Mock installation token response
     mock_token_response = MagicMock()
     mock_token_response.parsed_data.token = "ghs_installationToken123"
     mock_app_client.rest.apps.async_create_installation_access_token = AsyncMock(
         return_value=mock_token_response
     )
-    
+
     # Mock issue creation response
     mock_issue_response = MagicMock()
     mock_issue_response.parsed_data.html_url = "https://github.com/test-owner/test-repo/issues/42"
-    mock_installation_client.rest.issues.async_create = AsyncMock(
-        return_value=mock_issue_response
-    )
-    
+    mock_installation_client.rest.issues.async_create = AsyncMock(return_value=mock_issue_response)
+
     # Mock GitHub constructor to return appropriate clients
     github_calls = []
+
     def mock_github_constructor(auth=None):
         github_calls.append(auth)
         if len(github_calls) == 1:
             return mock_app_client
         return mock_installation_client
-    monkeypatch.setattr("github_action_triage.app.infra.github_issue_creator.GitHub", mock_github_constructor)
-    
+
+    monkeypatch.setattr(
+        "github_action_triage.app.infra.github_issue_creator.GitHub", mock_github_constructor
+    )
+
     creator = GitHubIssueCreatorAdapter(settings=settings)
-    
+
     # Act
     issue_url = await creator.create_issue_for_proposal(failure_event, remediation_proposal)
-    
+
     # Assert
     assert issue_url == "https://github.com/test-owner/test-repo/issues/42"
-    
+
     # Verify installation token was requested
     mock_app_client.rest.apps.async_create_installation_access_token.assert_called_once_with(
         installation_id=67890
     )
-    
+
     # Verify issue was created with correct parameters
     mock_installation_client.rest.issues.async_create.assert_called_once()
     call_kwargs = mock_installation_client.rest.issues.async_create.call_args.kwargs
-    
+
     assert call_kwargs["owner"] == "test-owner"
     assert call_kwargs["repo"] == "test-repo"
     assert call_kwargs["title"] == "Test failure in authentication module"
     assert call_kwargs["labels"] == ["triage", "ci"]
-    
+
     # Verify body formatting
     body = call_kwargs["body"]
     assert "## Workflow Failure Detected" in body
@@ -128,25 +130,27 @@ async def test_create_issue_uses_correct_repository(
     # Arrange
     mock_app_client = MagicMock()
     mock_installation_client = MagicMock()
-    
+
     mock_token_response = MagicMock()
     mock_token_response.parsed_data.token = "ghs_token"
     mock_app_client.rest.apps.async_create_installation_access_token = AsyncMock(
         return_value=mock_token_response
     )
-    
+
     mock_issue_response = MagicMock()
     mock_issue_response.parsed_data.html_url = "https://github.com/test-owner/test-repo/issues/1"
-    mock_installation_client.rest.issues.async_create = AsyncMock(
-        return_value=mock_issue_response
-    )
-    
+    mock_installation_client.rest.issues.async_create = AsyncMock(return_value=mock_issue_response)
+
     github_calls = []
+
     def mock_github_constructor(auth=None):
         github_calls.append(auth)
         return mock_app_client if len(github_calls) == 1 else mock_installation_client
-    monkeypatch.setattr("github_action_triage.app.infra.github_issue_creator.GitHub", mock_github_constructor)
-    
+
+    monkeypatch.setattr(
+        "github_action_triage.app.infra.github_issue_creator.GitHub", mock_github_constructor
+    )
+
     # Create event with different repository
     different_event = WorkflowRunFailureEvent(
         installation_id=99999,
@@ -163,17 +167,17 @@ async def test_create_issue_uses_correct_repository(
             logs_snippet="Error occurred",
         ),
     )
-    
+
     creator = GitHubIssueCreatorAdapter(settings=settings)
-    
+
     # Act
     await creator.create_issue_for_proposal(different_event, remediation_proposal)
-    
+
     # Assert
     call_kwargs = mock_installation_client.rest.issues.async_create.call_args.kwargs
     assert call_kwargs["owner"] == "different-org"
     assert call_kwargs["repo"] == "different-repo"
-    
+
     # Verify correct installation ID was used
     mock_app_client.rest.apps.async_create_installation_access_token.assert_called_once_with(
         installation_id=99999
@@ -187,26 +191,30 @@ async def test_create_issue_handles_api_failure(
     # Arrange
     mock_app_client = MagicMock()
     mock_installation_client = MagicMock()
-    
+
     mock_token_response = MagicMock()
     mock_token_response.parsed_data.token = "ghs_token"
     mock_app_client.rest.apps.async_create_installation_access_token = AsyncMock(
         return_value=mock_token_response
     )
-    
+
     # Simulate API failure
     mock_installation_client.rest.issues.async_create = AsyncMock(
         side_effect=Exception("GitHub API error: rate limit exceeded")
     )
-    
+
     github_calls = []
+
     def mock_github_constructor(auth=None):
         github_calls.append(auth)
         return mock_app_client if len(github_calls) == 1 else mock_installation_client
-    monkeypatch.setattr("github_action_triage.app.infra.github_issue_creator.GitHub", mock_github_constructor)
-    
+
+    monkeypatch.setattr(
+        "github_action_triage.app.infra.github_issue_creator.GitHub", mock_github_constructor
+    )
+
     creator = GitHubIssueCreatorAdapter(settings=settings)
-    
+
     # Act & Assert
     with pytest.raises(Exception, match="GitHub API error: rate limit exceeded"):
         await creator.create_issue_for_proposal(failure_event, remediation_proposal)
@@ -221,14 +229,14 @@ async def test_create_issue_handles_installation_token_failure(
     mock_app_client.rest.apps.async_create_installation_access_token = AsyncMock(
         side_effect=Exception("Installation not found")
     )
-    
+
     monkeypatch.setattr(
         "github_action_triage.app.infra.github_issue_creator.GitHub",
-        lambda auth=None: mock_app_client
+        lambda auth=None: mock_app_client,
     )
-    
+
     creator = GitHubIssueCreatorAdapter(settings=settings)
-    
+
     # Act & Assert
     with pytest.raises(Exception, match="Installation not found"):
         await creator.create_issue_for_proposal(failure_event, remediation_proposal)
@@ -241,25 +249,27 @@ async def test_format_issue_body_includes_all_required_sections(
     # Arrange
     mock_app_client = MagicMock()
     mock_installation_client = MagicMock()
-    
+
     mock_token_response = MagicMock()
     mock_token_response.parsed_data.token = "ghs_token"
     mock_app_client.rest.apps.async_create_installation_access_token = AsyncMock(
         return_value=mock_token_response
     )
-    
+
     mock_issue_response = MagicMock()
     mock_issue_response.parsed_data.html_url = "https://github.com/test-owner/test-repo/issues/1"
-    mock_installation_client.rest.issues.async_create = AsyncMock(
-        return_value=mock_issue_response
-    )
-    
+    mock_installation_client.rest.issues.async_create = AsyncMock(return_value=mock_issue_response)
+
     github_calls = []
+
     def mock_github_constructor(auth=None):
         github_calls.append(auth)
         return mock_app_client if len(github_calls) == 1 else mock_installation_client
-    monkeypatch.setattr("github_action_triage.app.infra.github_issue_creator.GitHub", mock_github_constructor)
-    
+
+    monkeypatch.setattr(
+        "github_action_triage.app.infra.github_issue_creator.GitHub", mock_github_constructor
+    )
+
     # Test with "large" fix effort
     large_effort_proposal = RemediationProposal(
         issue_title="Complex authentication refactor needed",
@@ -267,16 +277,16 @@ async def test_format_issue_body_includes_all_required_sections(
         fix_effort="large",
         remediation_plan="1. Audit current auth\n2. Design new system\n3. Implement\n4. Test thoroughly",
     )
-    
+
     creator = GitHubIssueCreatorAdapter(settings=settings)
-    
+
     # Act
     await creator.create_issue_for_proposal(failure_event, large_effort_proposal)
-    
+
     # Assert
     call_kwargs = mock_installation_client.rest.issues.async_create.call_args.kwargs
     body = call_kwargs["body"]
-    
+
     # Verify all required sections
     assert "## Workflow Failure Detected" in body
     assert "**Workflow**:" in body
@@ -285,7 +295,7 @@ async def test_format_issue_body_includes_all_required_sections(
     assert "**Fix Effort**: large" in body
     assert "## Identified Issue" in body
     assert "## Remediation Plan" in body
-    
+
     # Verify markdown link syntax
     assert "[View Failed Run](" in body
     assert "](https://github.com/test-owner/test-repo/actions/runs/9876)" in body

@@ -20,11 +20,7 @@ from github_action_triage.app.factory import create_app
 
 
 def compute_signature(payload: bytes, secret: str = "test-secret") -> str:
-    computed_hmac = hmac.new(
-        secret.encode("utf-8"),
-        payload,
-        hashlib.sha256
-    )
+    computed_hmac = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256)
     return f"sha256={computed_hmac.hexdigest()}"
 
 
@@ -84,7 +80,7 @@ def remediation_proposal():
         issue_title="npm install failed",
         identified_issue="npm install failed due to missing package-lock.json",
         fix_effort="small",
-        remediation_plan="1. Run npm install locally\n2. Commit package-lock.json\n3. Re-run workflow"
+        remediation_plan="1. Run npm install locally\n2. Commit package-lock.json\n3. Re-run workflow",
     )
 
 
@@ -92,35 +88,31 @@ def remediation_proposal():
 async def test_webhook_triggers_background_task(monkeypatch, failure_event):
     """Verify that webhook endpoint triggers background processing for workflow failures."""
     background_tasks_called = []
-    
+
     class MockBackgroundTasks:
         def add_task(self, func, *args, **kwargs):
-            background_tasks_called.append({
-                'func': func,
-                'args': args,
-                'kwargs': kwargs
-            })
-    
+            background_tasks_called.append({"func": func, "args": args, "kwargs": kwargs})
+
     # Mock the triage service handle_failure to avoid real processing
     from github_action_triage.app.api import TriageResult, TriageService
     from github_action_triage.app.events.outcomes import TriageOutcome
-    
+
     async def mock_handle_failure(self, event):
         return TriageResult(
             outcome=TriageOutcome.DEFERRED,
             message="Scheduled for background processing",
         )
-    
+
     monkeypatch.setattr(TriageService, "handle_failure", mock_handle_failure)
-    
+
     # Setup githubkit parse stub
     import github_action_triage.app.web.api as api
     import github_action_triage.app.web.github_webhooks as wh
-    
+
     class _Repo:
         def __init__(self, full_name):
             self.full_name = full_name
-    
+
     class _Job:
         def __init__(self, id, run_id, name, conclusion, run_url):
             self.id = id
@@ -128,32 +120,32 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event):
             self.name = name
             self.conclusion = conclusion
             self.run_url = run_url
-    
+
     class _Installation:
         def __init__(self, id):
             self.id = id
-    
+
     class _WorkflowJobEvent:
         def __init__(self, action, repository, workflow_job, installation=None):
             self.action = action
             self.repository = repository
             self.workflow_job = workflow_job
             self.installation = installation or _Installation(12345)
-    
+
     monkeypatch.setattr(wh, "WebhookWorkflowJobCompleted", _WorkflowJobEvent, raising=True)
-    
+
     def _parse(event_name: str, body: bytes):
         data = json.loads(body or b"{}")
         if event_name != "workflow_job":
             return object()
-        
+
         wf = data.get("workflow_job", {})
         repo = data.get("repository", {})
         action = data.get("action")
-        
+
         if action != "completed":
             return object()
-        
+
         return _WorkflowJobEvent(
             action=action,
             repository=_Repo(repo.get("full_name", "test-org/test-repo")),
@@ -165,15 +157,17 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event):
                 run_url=wf.get("run_url", ""),
             ),
         )
-    
+
     monkeypatch.setattr(api, "parse", _parse, raising=True)
     monkeypatch.setenv("TRIAGE_GITHUB_WEBHOOK_SECRET", "test-secret")
-    
+
     # Create test client
     app = create_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
+        payload = json.dumps(
+            workflow_job_payload(action="completed", conclusion="failure")
+        ).encode()
         response = await client.post(
             "/github/webhook",
             headers={
@@ -182,12 +176,14 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event):
             },
             content=payload,
         )
-    
+
     assert response.status_code == 202
 
 
 @pytest.mark.asyncio
-async def test_agent_diagnose_called_with_context(failure_event, failure_context, remediation_proposal):
+async def test_agent_diagnose_called_with_context(
+    failure_event, failure_context, remediation_proposal
+):
     """Verify that end-to-end flow calls agent.diagnose_and_propose with correct FailureContext."""
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
@@ -195,30 +191,33 @@ async def test_agent_diagnose_called_with_context(failure_event, failure_context
         RemediationAgent,
     )
     from github_action_triage.app.api import TriageService
-    
+
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
     mock_issue_creator = AsyncMock(spec=IssueCreator)
-    
+
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.return_value = remediation_proposal
-    
+
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
         issue_creator=mock_issue_creator,
     )
-    
+
     result = await service.handle_failure(failure_event)
-    
+
     mock_context_provider.fetch_failure_context.assert_called_once_with(failure_event)
     mock_agent.diagnose_and_propose.assert_called_once()
-    
+
     called_context = mock_agent.diagnose_and_propose.call_args[0][0]
     assert isinstance(called_context, FailureContext)
     assert called_context.repository_full_name == "test-org/test-repo"
     assert called_context.head_commit_sha == "abc123"
-    assert called_context.logs_excerpt == "Error: npm install failed\nERROR: package-lock.json not found"
+    assert (
+        called_context.logs_excerpt
+        == "Error: npm install failed\nERROR: package-lock.json not found"
+    )
 
 
 @pytest.mark.asyncio
@@ -230,27 +229,29 @@ async def test_actuator_apply_fix_called(failure_event, failure_context, remedia
         RemediationAgent,
     )
     from github_action_triage.app.api import TriageService
-    
+
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
     mock_issue_creator = AsyncMock(spec=IssueCreator)
-    
+
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.return_value = remediation_proposal
-    mock_issue_creator.create_issue_for_proposal.return_value = "https://github.com/test-org/test-repo/issues/1"
-    
+    mock_issue_creator.create_issue_for_proposal.return_value = (
+        "https://github.com/test-org/test-repo/issues/1"
+    )
+
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
         issue_creator=mock_issue_creator,
     )
-    
+
     await service.process_failure_async(failure_event)
-    
+
     mock_context_provider.fetch_failure_context.assert_called_once_with(failure_event)
     mock_agent.diagnose_and_propose.assert_called_once_with(failure_context)
     mock_issue_creator.create_issue_for_proposal.assert_called_once()
-    
+
     call_args = mock_issue_creator.create_issue_for_proposal.call_args
     assert call_args[0][0] == failure_event
     assert isinstance(call_args[0][1], RemediationProposal)
@@ -263,36 +264,43 @@ async def test_submit_proposal_tool_returns_remediation():
     """Test the submit_proposal tool directly to verify proper RemediationProposal construction."""
     from github_action_triage.agent.ai_agent import ActionTriageAgent
     from github_action_triage.app.config.settings import Settings
-    
+
     settings = Settings(anthropic_api_key="test-key")
     agent = ActionTriageAgent(settings)
-    
+
     proposal_storage = {"proposal": None}
     submit_tool = agent._create_submit_proposal_tool(proposal_storage)
-    
-    result = await submit_tool.handler({
-        "issue_title": "Dependency version conflict",
-        "identified_issue": "Dependency version conflict in package.json",
-        "fix_effort": "medium",
-        "remediation_plan": "1. Update conflicting dependencies\n2. Run npm audit fix\n3. Test locally\n4. Commit changes"
-    })
-    
+
+    result = await submit_tool.handler(
+        {
+            "issue_title": "Dependency version conflict",
+            "identified_issue": "Dependency version conflict in package.json",
+            "fix_effort": "medium",
+            "remediation_plan": "1. Update conflicting dependencies\n2. Run npm audit fix\n3. Test locally\n4. Commit changes",
+        }
+    )
+
     assert result is not None
     assert "content" in result
     assert result["content"][0]["type"] == "text"
     assert "success" in result["content"][0]["text"].lower()
-    
+
     stored_proposal = proposal_storage["proposal"]
     assert stored_proposal is not None
     assert isinstance(stored_proposal, RemediationProposal)
     assert stored_proposal.issue_title == "Dependency version conflict"
     assert stored_proposal.identified_issue == "Dependency version conflict in package.json"
     assert stored_proposal.fix_effort == "medium"
-    assert stored_proposal.remediation_plan == "1. Update conflicting dependencies\n2. Run npm audit fix\n3. Test locally\n4. Commit changes"
+    assert (
+        stored_proposal.remediation_plan
+        == "1. Update conflicting dependencies\n2. Run npm audit fix\n3. Test locally\n4. Commit changes"
+    )
 
 
 @pytest.mark.asyncio
-async def test_end_to_end_integration_flow(failure_event, failure_context, remediation_proposal, caplog):
+async def test_end_to_end_integration_flow(
+    failure_event, failure_context, remediation_proposal, caplog
+):
     """Integration test verifying complete webhook → background processing → agent → issue creation flow."""
     import logging
 
@@ -302,34 +310,38 @@ async def test_end_to_end_integration_flow(failure_event, failure_context, remed
         RemediationAgent,
     )
     from github_action_triage.app.api import TriageService
-    
+
     caplog.set_level(logging.INFO)
-    
+
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
     mock_issue_creator = AsyncMock(spec=IssueCreator)
-    
+
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.return_value = remediation_proposal
-    mock_issue_creator.create_issue_for_proposal.return_value = "https://github.com/test-org/test-repo/issues/1"
-    
+    mock_issue_creator.create_issue_for_proposal.return_value = (
+        "https://github.com/test-org/test-repo/issues/1"
+    )
+
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
         issue_creator=mock_issue_creator,
     )
-    
+
     await service.process_failure_async(failure_event)
-    
+
     mock_context_provider.fetch_failure_context.assert_called_once()
     mock_agent.diagnose_and_propose.assert_called_once()
     mock_issue_creator.create_issue_for_proposal.assert_called_once()
-    
+
     assert "Created issue for failure" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_background_processing_handles_errors_gracefully(failure_event, failure_context, caplog):
+async def test_background_processing_handles_errors_gracefully(
+    failure_event, failure_context, caplog
+):
     """Verify that errors in background processing are caught and logged."""
     import logging
 
@@ -339,33 +351,35 @@ async def test_background_processing_handles_errors_gracefully(failure_event, fa
         RemediationAgent,
     )
     from github_action_triage.app.api import TriageService
-    
+
     caplog.set_level(logging.ERROR)
-    
+
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
     mock_issue_creator = AsyncMock(spec=IssueCreator)
-    
+
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.side_effect = RuntimeError("AI analysis failed")
-    
+
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
         issue_creator=mock_issue_creator,
     )
-    
+
     await service.process_failure_async(failure_event)
-    
+
     mock_context_provider.fetch_failure_context.assert_called_once()
     mock_agent.diagnose_and_propose.assert_called_once()
     mock_issue_creator.create_issue_for_proposal.assert_not_called()
-    
+
     assert "Error during background triage processing" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_actuator_failure_is_logged(failure_event, failure_context, remediation_proposal, caplog):
+async def test_actuator_failure_is_logged(
+    failure_event, failure_context, remediation_proposal, caplog
+):
     """Verify that issue creator failure is logged but doesn't crash the flow."""
     import logging
 
@@ -375,24 +389,24 @@ async def test_actuator_failure_is_logged(failure_event, failure_context, remedi
         RemediationAgent,
     )
     from github_action_triage.app.api import TriageService
-    
+
     caplog.set_level(logging.ERROR)
-    
+
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
     mock_issue_creator = AsyncMock(spec=IssueCreator)
-    
+
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.return_value = remediation_proposal
     mock_issue_creator.create_issue_for_proposal.side_effect = RuntimeError("GitHub API failed")
-    
+
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
         issue_creator=mock_issue_creator,
     )
-    
+
     await service.process_failure_async(failure_event)
-    
+
     mock_issue_creator.create_issue_for_proposal.assert_called_once()
     assert "Error during background triage processing" in caplog.text

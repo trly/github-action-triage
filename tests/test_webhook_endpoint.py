@@ -38,6 +38,7 @@ class _WorkflowJobEvent:
 @pytest.fixture(autouse=True)
 def stub_githubkit_parse(monkeypatch):
     import github_action_triage.app.web.github_webhooks as wh
+
     monkeypatch.setattr(wh, "WebhookWorkflowJobCompleted", _WorkflowJobEvent, raising=True)
 
     import github_action_triage.app.web.api as api
@@ -53,11 +54,11 @@ def stub_githubkit_parse(monkeypatch):
         wf = data.get("workflow_job", {})
         repo = data.get("repository", {})
         action = data.get("action")
-        
+
         # Only return WebhookWorkflowJobCompleted for completed actions
         if action != "completed":
             return object()
-        
+
         return _WorkflowJobEvent(
             action=action,
             repository=_Repo(repo.get("full_name", "test-org/test-repo")),
@@ -100,34 +101,30 @@ def workflow_job_payload(action: str = "completed", conclusion: str = "failure")
 
 def compute_signature(payload: bytes, secret: str = "test-secret") -> str:
     """Compute GitHub webhook signature."""
-    computed_hmac = hmac.new(
-        secret.encode("utf-8"),
-        payload,
-        hashlib.sha256
-    )
+    computed_hmac = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256)
     return f"sha256={computed_hmac.hexdigest()}"
 
 
 @pytest.mark.asyncio
 async def test_logs_failure_workflow_job(caplog, test_client, monkeypatch):
     caplog.set_level("INFO")
-    
+
     # Mock the triage service to avoid real API calls
     from github_action_triage.app.api import TriageResult, TriageService
     from github_action_triage.app.events.outcomes import TriageOutcome
-    
+
     async def mock_handle_failure(self, event):
         return TriageResult(
             outcome=TriageOutcome.DEFERRED,
             message="Failure context captured for AI triage",
         )
-    
+
     monkeypatch.setattr(TriageService, "handle_failure", mock_handle_failure)
 
     payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
     response = await test_client.post(
-    "/github/webhook",
-    headers={
+        "/github/webhook",
+        headers={
             "X-GitHub-Event": "workflow_job",
             "X-Hub-Signature-256": compute_signature(payload),
         },
@@ -140,22 +137,23 @@ async def test_logs_failure_workflow_job(caplog, test_client, monkeypatch):
 @pytest.mark.asyncio
 async def test_invokes_failure_handler_for_job_failure(caplog, test_client, monkeypatch):
     caplog.set_level("INFO")
-    
+
     # Mock the triage service to avoid real API calls
     from github_action_triage.app.api import TriageService
-    
+
     async def mock_process_failure_async(self, event):
         import logging
+
         logger = logging.getLogger(__name__)
         logger.info("Background triage processing started")
-    
+
     # Patch the TriageService process_failure_async method
     monkeypatch.setattr(TriageService, "process_failure_async", mock_process_failure_async)
 
     payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
     response = await test_client.post(
-    "/github/webhook",
-    headers={
+        "/github/webhook",
+        headers={
             "X-GitHub-Event": "workflow_job",
             "X-Hub-Signature-256": compute_signature(payload),
         },
@@ -200,7 +198,9 @@ async def test_ignores_non_failure_conclusion(caplog, test_client):
 @pytest.mark.asyncio
 async def test_ignores_different_event_type(caplog, test_client):
     caplog.set_level("INFO")
-    payload = json.dumps({"ref": "refs/heads/main", "repository": {"full_name": "test-org/test-repo"}}).encode()
+    payload = json.dumps(
+        {"ref": "refs/heads/main", "repository": {"full_name": "test-org/test-repo"}}
+    ).encode()
     response = await test_client.post(
         "/github/webhook",
         headers={

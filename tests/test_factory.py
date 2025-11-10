@@ -16,7 +16,7 @@ def test_create_github_client():
 def test_create_triage_service():
     settings = Settings()
     service = create_triage_service(settings)
-    
+
     assert isinstance(service, TriageService)
     assert service._context_provider is not None
     assert service._agent is not None
@@ -25,6 +25,6 @@ def test_create_triage_service():
 
 def test_create_app_wires_triage_service():
     app = create_app()
-    
+
     assert hasattr(app.state, "triage_service")
     assert isinstance(app.state.triage_service, TriageService)

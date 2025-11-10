@@ -26,9 +26,7 @@ def settings_without_token():
 
 @pytest.fixture
 def settings_without_url():
-    return Settings(
-        sourcegraph_token=SecretStr("test-token-123"), sourcegraph_mcp_url=""
-    )
+    return Settings(sourcegraph_token=SecretStr("test-token-123"), sourcegraph_mcp_url="")
 
 
 def test_mcp_server_name_constant():
@@ -47,9 +45,7 @@ def test_create_sourcegraph_mcp_server_with_valid_token(settings_with_token):
     assert server_config["headers"]["Authorization"] == "token test-token-123"
 
 
-def test_create_sourcegraph_mcp_server_without_token_returns_none(
-    settings_without_token, caplog
-):
+def test_create_sourcegraph_mcp_server_without_token_returns_none(settings_without_token, caplog):
     result = create_sourcegraph_mcp_server(settings_without_token)
 
     assert result is None
@@ -95,9 +91,7 @@ def test_create_sourcegraph_mcp_server_returns_dict_with_server_name_key(
     assert MCP_SOURCEGRAPH_SERVER_NAME in result
 
 
-def test_create_sourcegraph_mcp_server_without_url_returns_none(
-    settings_without_url, caplog
-):
+def test_create_sourcegraph_mcp_server_without_url_returns_none(settings_without_url, caplog):
     result = create_sourcegraph_mcp_server(settings_without_url)
 
     assert result is None
@@ -110,9 +104,7 @@ def test_create_sourcegraph_mcp_server_requires_both_url_and_token(caplog):
         sourcegraph_token=SecretStr(""),
         sourcegraph_mcp_url="https://sourcegraph.example.com/.api/mcp/v1",
     )
-    settings_no_url = Settings(
-        sourcegraph_token=SecretStr("test-token"), sourcegraph_mcp_url=""
-    )
+    settings_no_url = Settings(sourcegraph_token=SecretStr("test-token"), sourcegraph_mcp_url="")
 
     result1 = create_sourcegraph_mcp_server(settings_no_token)
     result2 = create_sourcegraph_mcp_server(settings_no_url)

@@ -70,6 +70,7 @@ async def test_fetches_job_details_and_constructs_context(
     # Mock GitHub constructor
     def mock_github_constructor(token):
         return mock_installation_client
+
     monkeypatch.setattr("githubkit.GitHub", mock_github_constructor)
 
     # Mock the GitHub API response for job
@@ -90,15 +91,11 @@ async def test_fetches_job_details_and_constructs_context(
     mock_installation_client.rest.actions.async_download_job_logs_for_workflow_run.return_value = (
         mock_logs_response
     )
-    
+
     # Mock the workflow run response for workflow path
     mock_run_response = MagicMock()
-    mock_run_response.parsed_data = MagicMock(
-        path=".github/workflows/ci.yml"
-    )
-    mock_installation_client.rest.actions.async_get_workflow_run.return_value = (
-        mock_run_response
-    )
+    mock_run_response.parsed_data = MagicMock(path=".github/workflows/ci.yml")
+    mock_installation_client.rest.actions.async_get_workflow_run.return_value = mock_run_response
 
     adapter = GitHubContextAdapter(settings, mock_github_client)
     context = await adapter.fetch_failure_context(failure_event)
@@ -138,11 +135,12 @@ async def test_handles_api_errors_gracefully(
     # Mock GitHub constructor
     def mock_github_constructor(token):
         return mock_installation_client
+
     monkeypatch.setattr("githubkit.GitHub", mock_github_constructor)
 
     # Simulate an API error
-    mock_installation_client.rest.actions.async_get_job_for_workflow_run.side_effect = (
-        Exception("API error")
+    mock_installation_client.rest.actions.async_get_job_for_workflow_run.side_effect = Exception(
+        "API error"
     )
 
     adapter = GitHubContextAdapter(settings, mock_github_client)

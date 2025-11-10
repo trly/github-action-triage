@@ -1,7 +1,7 @@
 from github_action_triage.agent.ports import (
+    FailureSummary,
     RepositoryRef,
     WorkflowRef,
-    FailureSummary,
     WorkflowRunFailureEvent,
 )
 

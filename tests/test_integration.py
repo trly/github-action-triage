@@ -1,21 +1,22 @@
+import hashlib
+import hmac
+import json
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, patch
-from fastapi import BackgroundTasks
-from httpx import AsyncClient, ASGITransport
-from github_action_triage.app.factory import create_app
-from github_action_triage.app.events.models import (
-    WorkflowRunFailureEvent,
-    RepositoryRef,
-    WorkflowRef,
-    FailureSummary,
-)
+from httpx import ASGITransport, AsyncClient
+
 from github_action_triage.agent.ports import (
     FailureContext,
     RemediationProposal,
 )
-import json
-import hmac
-import hashlib
+from github_action_triage.app.events.models import (
+    FailureSummary,
+    RepositoryRef,
+    WorkflowRef,
+    WorkflowRunFailureEvent,
+)
+from github_action_triage.app.factory import create_app
 
 
 def compute_signature(payload: bytes, secret: str = "test-secret") -> str:
@@ -101,7 +102,7 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event):
             })
     
     # Mock the triage service handle_failure to avoid real processing
-    from github_action_triage.app.api import TriageService, TriageResult
+    from github_action_triage.app.api import TriageResult, TriageService
     from github_action_triage.app.events.outcomes import TriageOutcome
     
     async def mock_handle_failure(self, event):
@@ -113,8 +114,8 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event):
     monkeypatch.setattr(TriageService, "handle_failure", mock_handle_failure)
     
     # Setup githubkit parse stub
-    import github_action_triage.app.web.github_webhooks as wh
     import github_action_triage.app.web.api as api
+    import github_action_triage.app.web.github_webhooks as wh
     
     class _Repo:
         def __init__(self, full_name):
@@ -188,12 +189,12 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event):
 @pytest.mark.asyncio
 async def test_agent_diagnose_called_with_context(failure_event, failure_context, remediation_proposal):
     """Verify that end-to-end flow calls agent.diagnose_and_propose with correct FailureContext."""
-    from github_action_triage.app.api import TriageService
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
-        RemediationAgent,
         IssueCreator,
+        RemediationAgent,
     )
+    from github_action_triage.app.api import TriageService
     
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
@@ -223,12 +224,12 @@ async def test_agent_diagnose_called_with_context(failure_event, failure_context
 @pytest.mark.asyncio
 async def test_actuator_apply_fix_called(failure_event, failure_context, remediation_proposal):
     """Verify that background processing calls issue_creator.create_issue_for_proposal."""
-    from github_action_triage.app.api import TriageService
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
-        RemediationAgent,
         IssueCreator,
+        RemediationAgent,
     )
+    from github_action_triage.app.api import TriageService
     
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
@@ -294,12 +295,13 @@ async def test_submit_proposal_tool_returns_remediation():
 async def test_end_to_end_integration_flow(failure_event, failure_context, remediation_proposal, caplog):
     """Integration test verifying complete webhook → background processing → agent → issue creation flow."""
     import logging
-    from github_action_triage.app.api import TriageService
+
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
-        RemediationAgent,
         IssueCreator,
+        RemediationAgent,
     )
+    from github_action_triage.app.api import TriageService
     
     caplog.set_level(logging.INFO)
     
@@ -330,12 +332,13 @@ async def test_end_to_end_integration_flow(failure_event, failure_context, remed
 async def test_background_processing_handles_errors_gracefully(failure_event, failure_context, caplog):
     """Verify that errors in background processing are caught and logged."""
     import logging
-    from github_action_triage.app.api import TriageService
+
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
-        RemediationAgent,
         IssueCreator,
+        RemediationAgent,
     )
+    from github_action_triage.app.api import TriageService
     
     caplog.set_level(logging.ERROR)
     
@@ -365,12 +368,13 @@ async def test_background_processing_handles_errors_gracefully(failure_event, fa
 async def test_actuator_failure_is_logged(failure_event, failure_context, remediation_proposal, caplog):
     """Verify that issue creator failure is logged but doesn't crash the flow."""
     import logging
-    from github_action_triage.app.api import TriageService
+
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
-        RemediationAgent,
         IssueCreator,
+        RemediationAgent,
     )
+    from github_action_triage.app.api import TriageService
     
     caplog.set_level(logging.ERROR)
     

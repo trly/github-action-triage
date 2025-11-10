@@ -1,5 +1,7 @@
 import logging
+
 from claude_agent_sdk.types import McpServerConfig
+
 from github_action_triage.agent.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -26,13 +28,10 @@ def create_sourcegraph_mcp_server(
         server_config: McpServerConfig = {
             "type": "sse",
             "url": settings.sourcegraph_mcp_url,
-            "headers": {
-                "Authorization": f"token {settings.sourcegraph_token.get_secret_value()}"
-            },
+            "headers": {"Authorization": f"token {settings.sourcegraph_token.get_secret_value()}"},
         }
 
         return {MCP_SOURCEGRAPH_SERVER_NAME: server_config}
     except Exception as e:
-        logger.warning(f"Failed to create Sourcegraph MCP server: {
-                       e}", exc_info=True)
+        logger.warning(f"Failed to create Sourcegraph MCP server: {e}", exc_info=True)
         return None

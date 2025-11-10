@@ -1,9 +1,10 @@
 from githubkit import GitHub
 from githubkit.auth import AppAuthStrategy
+
 from github_action_triage.agent.ports import (
     IssueCreator,
-    WorkflowRunFailureEvent,
     RemediationProposal,
+    WorkflowRunFailureEvent,
 )
 from github_action_triage.app.config.settings import Settings
 
@@ -21,11 +22,8 @@ class GitHubIssueCreatorAdapter(IssueCreator):
     async def create_issue_for_proposal(
         self, event: WorkflowRunFailureEvent, proposal: RemediationProposal
     ) -> str:
-        response = (
-            await self._client.rest.apps
-            .async_create_installation_access_token(
-                installation_id=event.installation_id
-            )
+        response = await self._client.rest.apps.async_create_installation_access_token(
+            installation_id=event.installation_id
         )
         token_response = response
         installation_client = GitHub(token_response.parsed_data.token)

@@ -1,18 +1,20 @@
-import pytest
 from unittest.mock import AsyncMock
-from github_action_triage.app.api import TriageService
-from github_action_triage.app.events.models import (
-    WorkflowRunFailureEvent,
-    RepositoryRef,
-    WorkflowRef,
-    FailureSummary,
-)
-from github_action_triage.app.events.outcomes import TriageOutcome
+
+import pytest
+
 from github_action_triage.agent.ports import (
     GitHubContextProvider,
-    RemediationAgent,
     IssueCreator,
+    RemediationAgent,
 )
+from github_action_triage.app.api import TriageService
+from github_action_triage.app.events.models import (
+    FailureSummary,
+    RepositoryRef,
+    WorkflowRef,
+    WorkflowRunFailureEvent,
+)
+from github_action_triage.app.events.outcomes import TriageOutcome
 
 
 @pytest.mark.asyncio

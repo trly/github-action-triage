@@ -1,12 +1,14 @@
 import logging
 from typing import TypeGuard
+
 from githubkit.versions.latest.models import WebhookWorkflowJobCompleted
 from githubkit.versions.latest.webhooks import WebhookEvent
+
 from github_action_triage.app.events.models import (
-    WorkflowRunFailureEvent,
+    FailureSummary,
     RepositoryRef,
     WorkflowRef,
-    FailureSummary,
+    WorkflowRunFailureEvent,
 )
 
 logger = logging.getLogger("github_action_triage.webhooks")
@@ -40,10 +42,10 @@ def map_workflow_job_event(
 ) -> WorkflowRunFailureEvent:
     """Convert GitHub webhook event to domain event."""
     owner, repo = event.repository.full_name.split("/")
-    
+
     # Extract workflow name from event or use job name as fallback
     workflow_name = getattr(event.workflow_job, "workflow_name", event.workflow_job.name)
-    
+
     return WorkflowRunFailureEvent(
         installation_id=event.installation.id if event.installation else 0,
         repository=RepositoryRef(owner=owner, name=repo),
@@ -59,4 +61,3 @@ def map_workflow_job_event(
             logs_snippet=f"Job {event.workflow_job.name} failed",
         ),
     )
-

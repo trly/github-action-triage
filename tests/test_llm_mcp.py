@@ -1,10 +1,11 @@
 import pytest
 from pydantic import SecretStr
-from github_action_triage.app.llm.mcp import (
-    create_sourcegraph_mcp_server,
-    MCP_SOURCEGRAPH_SERVER_NAME,
-)
+
 from github_action_triage.app.config.settings import Settings
+from github_action_triage.app.llm.mcp import (
+    MCP_SOURCEGRAPH_SERVER_NAME,
+    create_sourcegraph_mcp_server,
+)
 
 
 @pytest.fixture

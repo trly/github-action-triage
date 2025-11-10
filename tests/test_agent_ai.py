@@ -1,13 +1,14 @@
 import pytest
+
 from github_action_triage.agent.ai_agent import ActionTriageAgent
 from github_action_triage.agent.ports import FailureContext
+from github_action_triage.app.config.settings import Settings
 from github_action_triage.app.events.models import (
-    WorkflowRunFailureEvent,
+    FailureSummary,
     RepositoryRef,
     WorkflowRef,
-    FailureSummary,
+    WorkflowRunFailureEvent,
 )
-from github_action_triage.app.config.settings import Settings
 
 
 @pytest.fixture
@@ -62,8 +63,8 @@ async def test_prepare_stores_context_without_llm_invocation(settings, failure_c
 @pytest.mark.asyncio
 async def test_diagnose_and_propose_requires_proposal_submission(settings, failure_context):
     """Test that diagnose_and_propose raises error if agent doesn't submit a proposal."""
-    from unittest.mock import patch
     from dataclasses import dataclass
+    from unittest.mock import patch
     
     @dataclass
     class ResultMessage:
@@ -449,8 +450,8 @@ async def test_diagnose_and_propose_multi_turn_conversation(settings, failure_co
     2. Request for more context (TextBlock)
     3. Final submit_proposal tool call (ToolUseBlock)
     """
-    from unittest.mock import AsyncMock, MagicMock, patch
     from dataclasses import dataclass
+    from unittest.mock import patch
     
     # Define mock message types matching claude_agent_sdk structure
     @dataclass

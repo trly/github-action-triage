@@ -1,6 +1,6 @@
-import zipfile
 import io
-import pytest
+import zipfile
+
 from github_action_triage.app.infra.log_extraction import extract_failure_excerpt
 
 

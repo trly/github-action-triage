@@ -1,14 +1,16 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from github_action_triage.app.infra.github_issue_creator import GitHubIssueCreatorAdapter
+
+import pytest
+
 from github_action_triage.agent.ports import (
-    WorkflowRunFailureEvent,
-    RepositoryRef,
-    WorkflowRef,
     FailureSummary,
     RemediationProposal,
+    RepositoryRef,
+    WorkflowRef,
+    WorkflowRunFailureEvent,
 )
 from github_action_triage.app.config.settings import Settings
+from github_action_triage.app.infra.github_issue_creator import GitHubIssueCreatorAdapter
 
 
 @pytest.fixture
@@ -73,14 +75,12 @@ async def test_create_issue_formats_body_correctly(
     )
     
     # Mock GitHub constructor to return appropriate clients
-    from githubkit import GitHub
     github_calls = []
     def mock_github_constructor(auth=None):
         github_calls.append(auth)
         if len(github_calls) == 1:
             return mock_app_client
-        else:
-            return mock_installation_client
+        return mock_installation_client
     monkeypatch.setattr("github_action_triage.app.infra.github_issue_creator.GitHub", mock_github_constructor)
     
     creator = GitHubIssueCreatorAdapter(settings=settings)
@@ -141,7 +141,6 @@ async def test_create_issue_uses_correct_repository(
         return_value=mock_issue_response
     )
     
-    from githubkit import GitHub
     github_calls = []
     def mock_github_constructor(auth=None):
         github_calls.append(auth)
@@ -200,7 +199,6 @@ async def test_create_issue_handles_api_failure(
         side_effect=Exception("GitHub API error: rate limit exceeded")
     )
     
-    from githubkit import GitHub
     github_calls = []
     def mock_github_constructor(auth=None):
         github_calls.append(auth)
@@ -224,7 +222,6 @@ async def test_create_issue_handles_installation_token_failure(
         side_effect=Exception("Installation not found")
     )
     
-    from githubkit import GitHub
     monkeypatch.setattr(
         "github_action_triage.app.infra.github_issue_creator.GitHub",
         lambda auth=None: mock_app_client
@@ -257,7 +254,6 @@ async def test_format_issue_body_includes_all_required_sections(
         return_value=mock_issue_response
     )
     
-    from githubkit import GitHub
     github_calls = []
     def mock_github_constructor(auth=None):
         github_calls.append(auth)

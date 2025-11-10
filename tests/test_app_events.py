@@ -1,11 +1,10 @@
-import pytest
+from github_action_triage.agent.ports import FailureContext
 from github_action_triage.app.events.models import (
-    WorkflowRunFailureEvent,
+    FailureSummary,
     RepositoryRef,
     WorkflowRef,
-    FailureSummary,
+    WorkflowRunFailureEvent,
 )
-from github_action_triage.agent.ports import FailureContext
 
 
 def test_failure_event_supports_run_metadata():

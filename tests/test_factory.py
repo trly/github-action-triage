@@ -1,11 +1,10 @@
-import pytest
+from github_action_triage.app.api import TriageService
+from github_action_triage.app.config.settings import Settings
 from github_action_triage.app.factory import (
     create_app,
-    create_triage_service,
     create_github_client,
+    create_triage_service,
 )
-from github_action_triage.app.config.settings import Settings
-from github_action_triage.app.api import TriageService
 
 
 def test_create_github_client():

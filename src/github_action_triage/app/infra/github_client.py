@@ -1,14 +1,16 @@
 import json
 import logging
-from githubkit import GitHub, AppAuthStrategy
+
+from githubkit import GitHub
+
 from github_action_triage.agent.ports import (
-    GitHubContextProvider,
     FailureContext,
-    RepositoryActuator,
+    GitHubContextProvider,
     RemediationProposal,
+    RepositoryActuator,
 )
-from github_action_triage.app.events.models import WorkflowRunFailureEvent
 from github_action_triage.app.config.settings import Settings
+from github_action_triage.app.events.models import WorkflowRunFailureEvent
 from github_action_triage.app.infra.log_extraction import extract_failure_excerpt
 
 logger = logging.getLogger(__name__)
@@ -19,14 +21,10 @@ class GitHubContextAdapter(GitHubContextProvider):
         self._settings = settings
         self._client = github_client
 
-    async def fetch_failure_context(
-        self, event: WorkflowRunFailureEvent
-    ) -> FailureContext:
+    async def fetch_failure_context(self, event: WorkflowRunFailureEvent) -> FailureContext:
         # Create installation-scoped client by getting installation access token
-        token_response = (
-            await self._client.rest.apps.async_create_installation_access_token(
-                installation_id=event.installation_id
-            )
+        token_response = await self._client.rest.apps.async_create_installation_access_token(
+            installation_id=event.installation_id
         )
         installation_token = token_response.parsed_data.token
 
@@ -37,12 +35,10 @@ class GitHubContextAdapter(GitHubContextProvider):
         job_id = int(event.workflow.job_id)
 
         # Fetch job details from GitHub API
-        response = (
-            await installation_client.rest.actions.async_get_job_for_workflow_run(
-                owner=event.repository.owner,
-                repo=event.repository.name,
-                job_id=job_id,
-            )
+        response = await installation_client.rest.actions.async_get_job_for_workflow_run(
+            owner=event.repository.owner,
+            repo=event.repository.name,
+            job_id=job_id,
         )
 
         job_data = response.parsed_data
@@ -55,10 +51,12 @@ class GitHubContextAdapter(GitHubContextProvider):
 
         # Download logs using GitHub API
         try:
-            logs_response = await installation_client.rest.actions.async_download_job_logs_for_workflow_run(
-                owner=event.repository.owner,
-                repo=event.repository.name,
-                job_id=job_id,
+            logs_response = (
+                await installation_client.rest.actions.async_download_job_logs_for_workflow_run(
+                    owner=event.repository.owner,
+                    repo=event.repository.name,
+                    job_id=job_id,
+                )
             )
             logs_bytes = logs_response.content
             logs_excerpt = extract_failure_excerpt(logs_bytes)
@@ -80,8 +78,7 @@ class GitHubContextAdapter(GitHubContextProvider):
 
         return FailureContext(
             event=event,
-            repository_full_name=f"{
-                event.repository.owner}/{event.repository.name}",
+            repository_full_name=f"{event.repository.owner}/{event.repository.name}",
             head_commit_sha=job_data.head_sha,
             branch_ref=f"refs/heads/{job_data.head_branch}",
             job_html_url=job_data.html_url or "",
@@ -108,5 +105,4 @@ class GitHubRepositoryActuator(RepositoryActuator):
             json.dumps(proposal.model_dump(), indent=2, default=str),
         )
 
-        raise NotImplementedError(
-            "Repository fix application not yet implemented")
+        raise NotImplementedError("Repository fix application not yet implemented")

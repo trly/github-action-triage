@@ -1,13 +1,15 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from github_action_triage.app.infra.github_client import GitHubContextAdapter
+
+import pytest
+
+from github_action_triage.app.config.settings import Settings
 from github_action_triage.app.events.models import (
-    WorkflowRunFailureEvent,
+    FailureSummary,
     RepositoryRef,
     WorkflowRef,
-    FailureSummary,
+    WorkflowRunFailureEvent,
 )
-from github_action_triage.app.config.settings import Settings
+from github_action_triage.app.infra.github_client import GitHubContextAdapter
 
 
 @pytest.fixture
@@ -66,7 +68,6 @@ async def test_fetches_job_details_and_constructs_context(
     mock_installation_client.rest.actions.async_get_workflow_run = AsyncMock()
 
     # Mock GitHub constructor
-    from githubkit import GitHub
     def mock_github_constructor(token):
         return mock_installation_client
     monkeypatch.setattr("githubkit.GitHub", mock_github_constructor)
@@ -135,7 +136,6 @@ async def test_handles_api_errors_gracefully(
     mock_installation_client.rest.actions.async_get_job_for_workflow_run = AsyncMock()
 
     # Mock GitHub constructor
-    from githubkit import GitHub
     def mock_github_constructor(token):
         return mock_installation_client
     monkeypatch.setattr("githubkit.GitHub", mock_github_constructor)

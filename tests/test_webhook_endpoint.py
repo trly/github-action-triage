@@ -1,8 +1,10 @@
-import json
-import hmac
 import hashlib
+import hmac
+import json
+
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
+
 from github_action_triage.app.factory import create_app
 
 
@@ -111,7 +113,7 @@ async def test_logs_failure_workflow_job(caplog, test_client, monkeypatch):
     caplog.set_level("INFO")
     
     # Mock the triage service to avoid real API calls
-    from github_action_triage.app.api import TriageService, TriageResult
+    from github_action_triage.app.api import TriageResult, TriageService
     from github_action_triage.app.events.outcomes import TriageOutcome
     
     async def mock_handle_failure(self, event):

@@ -28,6 +28,7 @@ testpaths = ["tests"]
 [tool.poe.tasks]
 dev = "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 lint = "ruff check src/ tests/"
+fix = "ruff check --fix src/ tests/"
 format = "ruff format src/ tests/"
 format-check = "ruff format --check src/ tests/"
 
@@ -37,3 +38,16 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "DTZ", "T10", "PIE", "RET", "SIM", "ARG", "PTH"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "E501",   # Allow long lines (test data, assertions)
+    "ARG001", # Allow unused fixtures
+    "ARG005", # Allow unused lambda args (mocking)
+    "SIM117", # Allow nested with statements (more readable in tests)
+    "A002",   # Allow shadowing built-ins (test helper classes)
+    "F841",   # Allow unused local variables (when testing side effects)
+]
+"src/github_action_triage/agent/ai_agent.py" = ["E501"]  # Allow long lines in AI prompts
+"src/github_action_triage/agent/mcp.py" = ["E501"]  # Allow long lines in log messages
+"src/github_action_triage/app/api.py" = ["E501"]  # Allow long lines in messages

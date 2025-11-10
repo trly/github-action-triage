@@ -1,8 +1,9 @@
 import logging
-from fastapi import APIRouter, Request, HTTPException, status, BackgroundTasks
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from githubkit.webhooks import parse
-from githubkit.versions.latest.models import WebhookWorkflowJobCompleted
+
 from github_action_triage.app.web.github_webhooks import (
     is_failure_workflow_job,
     log_workflow_job_failure,
@@ -24,10 +25,10 @@ async def handle_webhook(request: Request, background_tasks: BackgroundTasks) ->
         )
 
     body = await request.body()
-    
+
     signature = request.headers.get("X-Hub-Signature-256", "")
     settings = request.app.state.settings
-    
+
     if not verify_github_signature(body, signature, settings.github_webhook_secret):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -49,9 +50,7 @@ async def handle_webhook(request: Request, background_tasks: BackgroundTasks) ->
         service = request.app.state.triage_service
         background_tasks.add_task(service.process_failure_async, triage_event)
 
-    return JSONResponse(
-        status_code=status.HTTP_202_ACCEPTED, content={"status": "accepted"}
-    )
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "accepted"})
 
 
 @router.get("/health")

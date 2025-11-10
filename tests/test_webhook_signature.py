@@ -1,6 +1,6 @@
-import hmac
 import hashlib
-import pytest
+import hmac
+
 from github_action_triage.app.web.signature import verify_github_signature
 
 

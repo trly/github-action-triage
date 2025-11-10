@@ -4,7 +4,7 @@ from github_action_triage.app.events.outcomes import TriageOutcome
 from github_action_triage.agent.ports import (
     GitHubContextProvider,
     RemediationAgent,
-    RepositoryActuator,
+    IssueCreator,
 )
 
 
@@ -20,11 +20,11 @@ class TriageService:
         self,
         context_provider: GitHubContextProvider,
         agent: RemediationAgent,
-        actuator: RepositoryActuator,
+        issue_creator: IssueCreator,
     ):
         self._context_provider = context_provider
         self._agent = agent
-        self._actuator = actuator
+        self._issue_creator = issue_creator
 
     async def handle_failure(self, event: WorkflowRunFailureEvent) -> TriageResult:
         context = await self._context_provider.fetch_failure_context(event)
@@ -43,20 +43,13 @@ class TriageService:
             context = await self._context_provider.fetch_failure_context(event)
             proposal = await self._agent.diagnose_and_propose(context)
             
-            logger.debug(
-                "Diagnosis complete",
-                extra={
-                    "issue": proposal.identified_issue,
-                    "effort": proposal.fix_effort,
-                }
+            issue_url = await self._issue_creator.create_issue_for_proposal(
+                event, proposal
+            )
+            logger.info(
+                "Created issue for failure",
+                extra={"issue_url": issue_url, "repository": event.repository}
             )
             
-            success = await self._actuator.apply_fix(event, proposal)
-            
-            if success:
-                logger.debug("Fix applied successfully")
-            else:
-                logger.warning("Failed to apply fix")
-                
         except Exception as exc:
             logger.exception("Error during background triage processing", exc_info=exc)

@@ -3,10 +3,8 @@ from fastapi import FastAPI
 from githubkit import GitHub, AppAuthStrategy
 from github_action_triage.app.web.api import router as github_router
 from github_action_triage.app.api import TriageService
-from github_action_triage.app.infra.github_client import (
-    GitHubContextAdapter,
-    GitHubRepositoryActuator,
-)
+from github_action_triage.app.infra.github_client import GitHubContextAdapter
+from github_action_triage.app.infra.github_issue_creator import GitHubIssueCreatorAdapter
 from github_action_triage.agent.ai_agent import ActionTriageAgent
 from github_action_triage.app.config.settings import Settings, get_settings
 
@@ -29,12 +27,12 @@ def create_triage_service(settings: Settings) -> TriageService:
     github_client = create_github_client(settings)
     context_provider = GitHubContextAdapter(settings, github_client)
     agent = ActionTriageAgent(settings)
-    actuator = GitHubRepositoryActuator(settings)
+    issue_creator = GitHubIssueCreatorAdapter(settings)
     
     return TriageService(
         context_provider=context_provider,
         agent=agent,
-        actuator=actuator,
+        issue_creator=issue_creator,
     )
 
 

@@ -122,16 +122,17 @@ bd close bd-42 --reason "Completed" --json
    - Use `jj diff` to review changes
    - Run tests frequently: `uv run pytest`
    - Do NOT commit yet; changes accumulate in your working change
-5. **Squash work**: Once work is complete, use `jj squash` to move accumulated changes into the descriptive commit
-   - This consolidates all changes into a single, well-described commit
-6. **Discover new work?** Create linked issues for problems found during work:
+5. **Discover new work?** Create linked issues for problems found during work:
    - Use: `bd create "Issue title" -t bug|feature|task -p 0-4 --deps discovered-from:<parent-id> --json`
    - Example: `bd create "Add validation for webhook signatures" -t task -p 1 --deps discovered-from:bd-42 --json`
    - Always link discovered work with `discovered-from` to track where the issue originated
    - This maintains traceability and helps understand dependencies across work items
-7. **Complete**: After all work is merged/pushed, `bd close <id> --reason "Completed"`
+6. **Complete**: Mark issue as done: `bd close <id> --reason "Completed"`
+7. **Squash work**: After closing the issue, consolidate all changes: `jj squash`
+   - This moves accumulated changes into the single, well-described commit you created in step 3
+   - The working copy becomes empty after squash
 8. **Sync state**: The `.beads/issues.jsonl` file auto-syncs when you run bd commands
-   - No manual commits of this file needed; `jj squash` happens naturally in your workflow
+   - No manual commits of this file needed; the workflow is complete
 
 ### Auto-Sync
 

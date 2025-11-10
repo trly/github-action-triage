@@ -21,7 +21,7 @@ def test_create_triage_service():
     assert isinstance(service, TriageService)
     assert service._context_provider is not None
     assert service._agent is not None
-    assert service._actuator is not None
+    assert service._issue_creator is not None
 
 
 def test_create_app_wires_triage_service():

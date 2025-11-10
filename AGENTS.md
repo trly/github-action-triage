@@ -110,15 +110,28 @@ bd close bd-42 --reason "Completed" --json
 
 ### Workflow for AI Agents
 
-1. **Check ready work**: `bd ready` shows unblocked issues
+1. **Check ready work**: `bd ready --json` shows unblocked issues
 2. **Claim your task**: `bd update <id> --status in_progress`
-3. Create a new empty jj change `jj new 'what's being worked on`
+3. **Create a work change**: `jj new 'Descriptive commit message for your work'`
+   - This creates a new empty change with your description
+   - All your work will go into this change
+   - Use a clear, imperative commit message (e.g., "Add GitHub API authentication", "Fix webhook parsing bug")
+   - Include context about what problem is being solved or feature is being added
 4. **Work on it**: Implement, test, document
-5. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" -p 1 --deps discovered-from:<parent-id>`
-6. **Complete**: `bd close <id> --reason "Done"`
-7. **Commit together**: Always commit the `.beads/issues.jsonl` file together with the code changes so issue state stays in sync with code state
-   - use `jj commit`
+   - Make edits to files normally
+   - Use `jj diff` to review changes
+   - Run tests frequently: `uv run pytest`
+   - Do NOT commit yet; changes accumulate in your working change
+5. **Squash work**: Once work is complete, use `jj squash` to move accumulated changes into the descriptive commit
+   - This consolidates all changes into a single, well-described commit
+6. **Discover new work?** Create linked issues for problems found during work:
+   - Use: `bd create "Issue title" -t bug|feature|task -p 0-4 --deps discovered-from:<parent-id> --json`
+   - Example: `bd create "Add validation for webhook signatures" -t task -p 1 --deps discovered-from:bd-42 --json`
+   - Always link discovered work with `discovered-from` to track where the issue originated
+   - This maintains traceability and helps understand dependencies across work items
+7. **Complete**: After all work is merged/pushed, `bd close <id> --reason "Completed"`
+8. **Sync state**: The `.beads/issues.jsonl` file auto-syncs when you run bd commands
+   - No manual commits of this file needed; `jj squash` happens naturally in your workflow
 
 ### Auto-Sync
 

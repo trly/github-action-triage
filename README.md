@@ -21,7 +21,8 @@ src/github_action_triage/
 │   ├── config/              # Configuration management
 │   │   └── settings.py      # Environment-based settings
 │   ├── infra/               # Infrastructure adapters
-│   │   └── github_client.py # GitHub API integration
+│   │   ├── github_client.py # GitHub API integration
+│   │   └── github_issue_creator.py # GitHub issue creation
 │   ├── api.py               # Core triage service orchestration
 │   └── factory.py           # FastAPI application factory
 └── agent/                   # Agent layer
@@ -38,11 +39,11 @@ src/github_action_triage/
 ### Data Flow
 
 1. GitHub webhook → FastAPI endpoint (`/github/webhook`)
-2. Triage service orchestrates:
+2. Triage service orchestrates (background processing):
    - Context gathering via `GitHubContextProvider`
    - Diagnosis via `RemediationAgent`
-   - Fix application via `RepositoryActuator`
-3. Returns triage outcome (DEFERRED, FIX_APPLIED, UNSUPPORTED)
+   - Issue creation via `IssueCreator`
+3. Returns 200 OK immediately (processing continues asynchronously)
 
 ## Development
 
@@ -115,34 +116,115 @@ export TRIAGE_LOG_LEVEL="INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 ```
 
 **Notes**:
+
 - `TRIAGE_GITHUB_PRIVATE_KEY` should contain the full PEM content (including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` lines), not just a file path.
 - `TRIAGE_GITHUB_WEBHOOK_SECRET` should be a secure random string. Generate one with:
+
   ```bash
   # Generate a secure random secret
   openssl rand -hex 32
-  
+
   # Or use Ruby
   ruby -rsecurerandom -e 'puts SecureRandom.hex(32)'
-  
+
   # Or use Python
   python3 -c 'import secrets; print(secrets.token_hex(32))'
   ```
+
   Configure this same secret in your GitHub App webhook settings for signature verification.
 
-## Current Status
+## Deployment
 
-**Phase: Core Features Implemented**
+### Container Deployment
 
-- ✅ Package structure established
-- ✅ Domain models and protocols defined
-- ✅ FastAPI routing configured
-- ✅ Infrastructure adapter implementations
-- ✅ GitHub API integration via GitHubKit
-- ✅ AI-powered diagnosis via Claude Agent SDK
-- ✅ Background processing via FastAPI BackgroundTasks
-- ✅ Comment posting to workflow runs and commits
-- ✅ Sourcegraph MCP integration for code analysis
-- ⏳ Automated fix application (in progress)
+The service is containerized using a multi-stage Docker build with a minimal Chainguard Python runtime.
+
+#### Building the Container
+
+```bash
+# Build the container image
+docker build -t github-action-triage:latest .
+
+# Or with a specific tag
+docker build -t ghcr.io/yourorg/github-action-triage:v1.0.0 .
+```
+
+#### Running the Container
+
+```bash
+# Run with environment variables
+docker run -d \
+  -p 8000:8000 \
+  -e TRIAGE_GITHUB_APP_ID="123456" \
+  -e TRIAGE_GITHUB_PRIVATE_KEY="$(cat path/to/your-app.pem)" \
+  -e TRIAGE_GITHUB_WEBHOOK_SECRET="your-webhook-secret" \
+  -e TRIAGE_ANTHROPIC_API_KEY="sk-ant-..." \
+  -e TRIAGE_SOURCEGRAPH_TOKEN="sgp_..." \
+  -e TRIAGE_SOURCEGRAPH_MCP_URL="http://localhost:3000" \
+  -e TRIAGE_LOG_LEVEL="INFO" \
+  --name github-action-triage \
+  github-action-triage:latest
+```
+
+#### Using Environment File
+
+Create a `.env` file with your configuration:
+
+```bash
+TRIAGE_GITHUB_APP_ID=123456
+TRIAGE_GITHUB_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----
+...
+-----END RSA PRIVATE KEY-----
+TRIAGE_GITHUB_WEBHOOK_SECRET=your-webhook-secret
+TRIAGE_ANTHROPIC_API_KEY=sk-ant-...
+TRIAGE_SOURCEGRAPH_TOKEN=sgp_...
+TRIAGE_SOURCEGRAPH_MCP_URL=http://localhost:3000
+TRIAGE_LOG_LEVEL=INFO
+```
+
+Then run:
+
+```bash
+docker run -d -p 8000:8000 --env-file .env --name github-action-triage github-action-triage:latest
+```
+
+#### Docker Compose
+
+Create a `docker-compose.yml` file:
+
+```yaml
+services:
+  triage:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/github/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+```
+
+Start the service:
+
+```bash
+docker compose up -d
+```
+
+#### Production Considerations
+
+- **Secrets Management**: Use Docker secrets or a secrets manager (AWS Secrets Manager, HashiCorp Vault) instead of environment variables for sensitive data
+- **Logging**: Container logs are sent to stdout/stderr; configure log aggregation (Datadog, CloudWatch, etc.)
+- **Monitoring**: Expose `/github/health` endpoint for health checks and load balancer integration
+- **Resource Limits**: Set memory and CPU limits in production:
+  ```bash
+  docker run -d -p 8000:8000 --memory="512m" --cpus="1.0" --env-file .env github-action-triage:latest
+  ```
+- **Security**: The container uses the minimal Chainguard Python image for reduced attack surface
 
 ## Resources
 
@@ -156,4 +238,3 @@ export TRIAGE_LOG_LEVEL="INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 2. Implement to satisfy tests
 3. Ensure all tests pass: `uv run pytest`
 4. Verify server boots: `uv run poe dev`
-

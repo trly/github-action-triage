@@ -191,12 +191,12 @@ async def test_agent_diagnose_called_with_context(failure_event, failure_context
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
         RemediationAgent,
-        RepositoryActuator,
+        IssueCreator,
     )
     
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
-    mock_actuator = AsyncMock(spec=RepositoryActuator)
+    mock_issue_creator = AsyncMock(spec=IssueCreator)
     
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.return_value = remediation_proposal
@@ -204,7 +204,7 @@ async def test_agent_diagnose_called_with_context(failure_event, failure_context
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
-        actuator=mock_actuator,
+        issue_creator=mock_issue_creator,
     )
     
     result = await service.handle_failure(failure_event)
@@ -221,35 +221,35 @@ async def test_agent_diagnose_called_with_context(failure_event, failure_context
 
 @pytest.mark.asyncio
 async def test_actuator_apply_fix_called(failure_event, failure_context, remediation_proposal):
-    """Verify that background processing calls actuator.apply_fix with the proposal."""
+    """Verify that background processing calls issue_creator.create_issue_for_proposal."""
     from github_action_triage.app.api import TriageService
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
         RemediationAgent,
-        RepositoryActuator,
+        IssueCreator,
     )
     
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
-    mock_actuator = AsyncMock(spec=RepositoryActuator)
+    mock_issue_creator = AsyncMock(spec=IssueCreator)
     
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.return_value = remediation_proposal
-    mock_actuator.apply_fix.return_value = True
+    mock_issue_creator.create_issue_for_proposal.return_value = "https://github.com/test-org/test-repo/issues/1"
     
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
-        actuator=mock_actuator,
+        issue_creator=mock_issue_creator,
     )
     
     await service.process_failure_async(failure_event)
     
     mock_context_provider.fetch_failure_context.assert_called_once_with(failure_event)
     mock_agent.diagnose_and_propose.assert_called_once_with(failure_context)
-    mock_actuator.apply_fix.assert_called_once()
+    mock_issue_creator.create_issue_for_proposal.assert_called_once()
     
-    call_args = mock_actuator.apply_fix.call_args
+    call_args = mock_issue_creator.create_issue_for_proposal.call_args
     assert call_args[0][0] == failure_event
     assert isinstance(call_args[0][1], RemediationProposal)
     assert call_args[0][1].identified_issue == "npm install failed due to missing package-lock.json"
@@ -289,39 +289,38 @@ async def test_submit_proposal_tool_returns_remediation():
 
 @pytest.mark.asyncio
 async def test_end_to_end_integration_flow(failure_event, failure_context, remediation_proposal, caplog):
-    """Integration test verifying complete webhook → background processing → agent → actuator flow."""
+    """Integration test verifying complete webhook → background processing → agent → issue creation flow."""
     import logging
     from github_action_triage.app.api import TriageService
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
         RemediationAgent,
-        RepositoryActuator,
+        IssueCreator,
     )
     
     caplog.set_level(logging.INFO)
     
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
-    mock_actuator = AsyncMock(spec=RepositoryActuator)
+    mock_issue_creator = AsyncMock(spec=IssueCreator)
     
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.return_value = remediation_proposal
-    mock_actuator.apply_fix.return_value = True
+    mock_issue_creator.create_issue_for_proposal.return_value = "https://github.com/test-org/test-repo/issues/1"
     
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
-        actuator=mock_actuator,
+        issue_creator=mock_issue_creator,
     )
     
     await service.process_failure_async(failure_event)
     
     mock_context_provider.fetch_failure_context.assert_called_once()
     mock_agent.diagnose_and_propose.assert_called_once()
-    mock_actuator.apply_fix.assert_called_once()
+    mock_issue_creator.create_issue_for_proposal.assert_called_once()
     
-    assert "Diagnosis complete" in caplog.text
-    assert "Fix applied successfully" in caplog.text
+    assert "Created issue for failure" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -332,14 +331,14 @@ async def test_background_processing_handles_errors_gracefully(failure_event, fa
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
         RemediationAgent,
-        RepositoryActuator,
+        IssueCreator,
     )
     
     caplog.set_level(logging.ERROR)
     
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
-    mock_actuator = AsyncMock(spec=RepositoryActuator)
+    mock_issue_creator = AsyncMock(spec=IssueCreator)
     
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.side_effect = RuntimeError("AI analysis failed")
@@ -347,46 +346,46 @@ async def test_background_processing_handles_errors_gracefully(failure_event, fa
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
-        actuator=mock_actuator,
+        issue_creator=mock_issue_creator,
     )
     
     await service.process_failure_async(failure_event)
     
     mock_context_provider.fetch_failure_context.assert_called_once()
     mock_agent.diagnose_and_propose.assert_called_once()
-    mock_actuator.apply_fix.assert_not_called()
+    mock_issue_creator.create_issue_for_proposal.assert_not_called()
     
     assert "Error during background triage processing" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_actuator_failure_is_logged(failure_event, failure_context, remediation_proposal, caplog):
-    """Verify that actuator failure is logged but doesn't crash the flow."""
+    """Verify that issue creator failure is logged but doesn't crash the flow."""
     import logging
     from github_action_triage.app.api import TriageService
     from github_action_triage.agent.ports import (
         GitHubContextProvider,
         RemediationAgent,
-        RepositoryActuator,
+        IssueCreator,
     )
     
-    caplog.set_level(logging.WARNING)
+    caplog.set_level(logging.ERROR)
     
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_agent = AsyncMock(spec=RemediationAgent)
-    mock_actuator = AsyncMock(spec=RepositoryActuator)
+    mock_issue_creator = AsyncMock(spec=IssueCreator)
     
     mock_context_provider.fetch_failure_context.return_value = failure_context
     mock_agent.diagnose_and_propose.return_value = remediation_proposal
-    mock_actuator.apply_fix.return_value = False
+    mock_issue_creator.create_issue_for_proposal.side_effect = RuntimeError("GitHub API failed")
     
     service = TriageService(
         context_provider=mock_context_provider,
         agent=mock_agent,
-        actuator=mock_actuator,
+        issue_creator=mock_issue_creator,
     )
     
     await service.process_failure_async(failure_event)
     
-    mock_actuator.apply_fix.assert_called_once()
-    assert "Failed to apply fix" in caplog.text
+    mock_issue_creator.create_issue_for_proposal.assert_called_once()
+    assert "Error during background triage processing" in caplog.text

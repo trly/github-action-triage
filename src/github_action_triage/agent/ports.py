@@ -89,6 +89,18 @@ class RemediationAgent(Protocol):
     ) -> RemediationProposal: ...
 
 
+class IssueCreator(Protocol):
+    async def create_issue_for_proposal(
+        self, event: WorkflowRunFailureEvent, proposal: RemediationProposal
+    ) -> str:
+        """Create GitHub issue for remediation proposal.
+
+        Returns:
+            Issue URL
+        """
+        ...
+
+
 class RepositoryActuator(Protocol):
     async def apply_fix(
         self, event: WorkflowRunFailureEvent, proposal: RemediationProposal

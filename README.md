@@ -111,6 +111,7 @@ export TRIAGE_GITHUB_WEBHOOK_SECRET="your-webhook-secret"
 export TRIAGE_ANTHROPIC_API_KEY="sk-ant-..."
 export TRIAGE_SOURCEGRAPH_TOKEN="sgp_..."
 export TRIAGE_SOURCEGRAPH_MCP_URL="http://localhost:3000"
+export TRIAGE_LOG_LEVEL="INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 ```
 
 **Notes**:

@@ -12,25 +12,24 @@ class Settings(BaseSettings):
     github_webhook_secret: str = Field(
         default="", description="GitHub webhook secret")
     anthropic_api_key: SecretStr = Field(
-        default=SecretStr(""), description="Anthropic API key for Claude Agent SDK"
-    )
+        default=SecretStr(""), description="Anthropic API key for Claude Agent SDK")
     sourcegraph_mcp_url: str = Field(
-        default="", description="Sourcegraph MCP server URL (optional)"
-    )
+        default="", description="Sourcegraph MCP server URL (optional)")
     sourcegraph_token: SecretStr = Field(
-        default=SecretStr(""), description="Sourcegraph API token (optional)"
-    )
-
+        default=SecretStr(""), description="Sourcegraph API token (optional)")
+    
     claude_model: str = Field(
         default="claude-sonnet-4-20250514",
-        description="Claude model to use for failure analysis",
-    )
+        description="Claude model to use for failure analysis")
     claude_max_turns: int = Field(
-        default=6, description="Maximum conversation turns for Claude agent"
-    )
+        default=6,
+        description="Maximum conversation turns for Claude agent")
     analysis_timeout_seconds: int = Field(
-        default=300, description="Timeout for failure analysis in seconds"
-    )
+        default=300,
+        description="Timeout for failure analysis in seconds")
+    log_level: str = Field(
+        default="INFO",
+        description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 
 
 def get_settings() -> Settings:

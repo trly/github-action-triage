@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     log_level: str = Field(
         default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"
     )
+    redis_url: str = Field(
+        default="redis://localhost:6379/0", description="Redis URL for Celery broker and result backend"
+    )
 
 
 def get_settings() -> Settings:

@@ -354,6 +354,7 @@ Configuration uses `TRIAGE_` prefix:
 - `TRIAGE_ANTHROPIC_API_KEY`: Anthropic API key for Claude Agent SDK
 - `TRIAGE_SOURCEGRAPH_TOKEN`: Sourcegraph access token for MCP integration
 - `TRIAGE_SOURCEGRAPH_MCP_URL`: Sourcegraph MCP server URL
+- `TRIAGE_REDIS_URL`: Redis URL for Celery broker and result backend (default: redis://localhost:6379/0)
 
 ## Current Implementation Status
 

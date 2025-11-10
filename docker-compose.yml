@@ -1,0 +1,57 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: triage-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build: .
+    container_name: triage-web
+    ports:
+      - "8000:8000"
+    environment:
+      - TRIAGE_GITHUB_APP_ID=${TRIAGE_GITHUB_APP_ID}
+      - TRIAGE_GITHUB_PRIVATE_KEY=${TRIAGE_GITHUB_PRIVATE_KEY}
+      - TRIAGE_GITHUB_WEBHOOK_SECRET=${TRIAGE_GITHUB_WEBHOOK_SECRET}
+      - TRIAGE_ANTHROPIC_API_KEY=${TRIAGE_ANTHROPIC_API_KEY}
+      - TRIAGE_SOURCEGRAPH_TOKEN=${TRIAGE_SOURCEGRAPH_TOKEN}
+      - TRIAGE_SOURCEGRAPH_MCP_URL=${TRIAGE_SOURCEGRAPH_MCP_URL}
+      - TRIAGE_REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/venv/bin/python", "-c", "import httpx; httpx.get('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  celery-worker:
+    build: .
+    container_name: triage-celery-worker
+    command: ["python", "-m", "celery", "-A", "github_action_triage.worker", "worker", "--loglevel=info", "--concurrency=1"]
+    environment:
+      - TRIAGE_GITHUB_APP_ID=${TRIAGE_GITHUB_APP_ID}
+      - TRIAGE_GITHUB_PRIVATE_KEY=${TRIAGE_GITHUB_PRIVATE_KEY}
+      - TRIAGE_GITHUB_WEBHOOK_SECRET=${TRIAGE_GITHUB_WEBHOOK_SECRET}
+      - TRIAGE_ANTHROPIC_API_KEY=${TRIAGE_ANTHROPIC_API_KEY}
+      - TRIAGE_SOURCEGRAPH_TOKEN=${TRIAGE_SOURCEGRAPH_TOKEN}
+      - TRIAGE_SOURCEGRAPH_MCP_URL=${TRIAGE_SOURCEGRAPH_MCP_URL}
+      - TRIAGE_REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:

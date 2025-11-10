@@ -252,7 +252,7 @@ async def test_concurrent_diagnoses_have_isolated_proposal_storage(settings, fai
 @pytest.mark.asyncio
 async def test_claude_agent_uses_configured_model_and_env(settings, failure_context):
     """Verify that ClaudeAgentOptions receives model and API key from settings."""
-    from unittest.mock import patch, ANY
+    from unittest.mock import patch
     
     # Create custom settings with specific model
     custom_settings = Settings(
@@ -262,6 +262,14 @@ async def test_claude_agent_uses_configured_model_and_env(settings, failure_cont
     )
     
     captured_options = None
+    captured_tool = None
+    
+    # Patch _create_submit_proposal_tool to capture the tool
+    original_create = ActionTriageAgent._create_submit_proposal_tool
+    def patched_create(self, storage):
+        nonlocal captured_tool
+        captured_tool = original_create(self, storage)
+        return captured_tool
     
     class MockClaudeSDKClient:
         def __init__(self, options):
@@ -272,7 +280,6 @@ async def test_claude_agent_uses_configured_model_and_env(settings, failure_cont
             pass
         
         async def receive_response(self):
-            # Return empty result to exit loop
             from dataclasses import dataclass
             @dataclass
             class ResultMessage:
@@ -283,13 +290,13 @@ async def test_claude_agent_uses_configured_model_and_env(settings, failure_cont
                 num_turns: int = 1
                 session_id: str = "test"
             
-            # Call submit_proposal before yielding result
-            submit_tool = captured_options.allowed_tools[0]
-            await submit_tool.handler({
-                "identified_issue": "Test issue",
-                "fix_effort": "small",
-                "remediation_plan": "Test plan"
-            })
+            # Call the captured tool directly
+            if captured_tool:
+                await captured_tool.handler({
+                    "identified_issue": "Test issue",
+                    "fix_effort": "small",
+                    "remediation_plan": "Test plan"
+                })
             
             yield ResultMessage()
         
@@ -299,17 +306,23 @@ async def test_claude_agent_uses_configured_model_and_env(settings, failure_cont
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
     
-    with patch('github_action_triage.agent.ai_agent.ClaudeSDKClient', MockClaudeSDKClient):
-        agent = ActionTriageAgent(custom_settings)
-        await agent.diagnose_and_propose(failure_context)
-        
-        # Verify ClaudeAgentOptions was configured correctly
-        assert captured_options is not None
-        assert captured_options.max_turns == 10
-        
-        # Verify API key is passed via env, not os.environ
-        assert hasattr(captured_options, 'env')
-        assert captured_options.env.get('ANTHROPIC_API_KEY') == "test-api-key-123"
+    with patch.object(ActionTriageAgent, '_create_submit_proposal_tool', patched_create):
+        with patch('github_action_triage.agent.ai_agent.ClaudeSDKClient', MockClaudeSDKClient):
+            agent = ActionTriageAgent(custom_settings)
+            proposal = await agent.diagnose_and_propose(failure_context)
+            
+            # Verify ClaudeAgentOptions was configured correctly
+            assert captured_options is not None
+            assert captured_options.max_turns == 10
+            assert captured_options.model == "claude-3-opus-20240229"
+            
+            # Verify API key is passed via env
+            assert hasattr(captured_options, 'env')
+            assert captured_options.env.get('ANTHROPIC_API_KEY') == "test-api-key-123"
+            
+            # Verify proposal was extracted
+            assert proposal is not None
+            assert proposal.identified_issue == "Test issue"
 
 
 @pytest.mark.asyncio
@@ -318,6 +331,14 @@ async def test_tool_schema_is_valid_json_schema(settings, failure_context):
     from unittest.mock import patch
     
     captured_options = None
+    captured_tool = None
+    
+    # Patch _create_submit_proposal_tool to capture the tool
+    original_create = ActionTriageAgent._create_submit_proposal_tool
+    def patched_create(self, storage):
+        nonlocal captured_tool
+        captured_tool = original_create(self, storage)
+        return captured_tool
     
     class MockClaudeSDKClient:
         def __init__(self, options):
@@ -338,12 +359,13 @@ async def test_tool_schema_is_valid_json_schema(settings, failure_context):
                 num_turns: int = 1
                 session_id: str = "test"
             
-            submit_tool = captured_options.allowed_tools[0]
-            await submit_tool.handler({
-                "identified_issue": "Test",
-                "fix_effort": "small",
-                "remediation_plan": "Test plan"
-            })
+            # Call the captured tool directly
+            if captured_tool:
+                await captured_tool.handler({
+                    "identified_issue": "Test",
+                    "fix_effort": "small",
+                    "remediation_plan": "Test plan"
+                })
             yield ResultMessage()
         
         async def __aenter__(self):
@@ -352,22 +374,21 @@ async def test_tool_schema_is_valid_json_schema(settings, failure_context):
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
     
-    with patch('github_action_triage.agent.ai_agent.ClaudeSDKClient', MockClaudeSDKClient):
-        agent = ActionTriageAgent(settings)
-        await agent.diagnose_and_propose(failure_context)
-        
-        # Get the submit_proposal tool
-        submit_tool = captured_options.allowed_tools[0]
-        
-        # Verify it has proper JSON Schema structure
-        assert hasattr(submit_tool, 'input_schema')
-        schema = submit_tool.input_schema
-        
-        # Should have type and properties keys, not just parameter types
-        assert 'type' in schema
-        assert schema['type'] == 'object'
-        assert 'properties' in schema
-        assert 'required' in schema
+    with patch.object(ActionTriageAgent, '_create_submit_proposal_tool', patched_create):
+        with patch('github_action_triage.agent.ai_agent.ClaudeSDKClient', MockClaudeSDKClient):
+            agent = ActionTriageAgent(settings)
+            await agent.diagnose_and_propose(failure_context)
+            
+            # Verify the captured tool has proper JSON Schema structure
+            assert captured_tool is not None
+            assert hasattr(captured_tool, 'input_schema')
+            schema = captured_tool.input_schema
+            
+            # Should have type and properties keys, not just parameter types
+            assert 'type' in schema
+            assert schema['type'] == 'object'
+            assert 'properties' in schema
+            assert 'required' in schema
 
 
 @pytest.mark.asyncio
@@ -478,31 +499,40 @@ async def test_diagnose_and_propose_multi_turn_conversation(settings, failure_co
         session_id="test-session-123"
     )
     
-    # We need to actually invoke the submit_proposal tool when the ToolUseBlock is processed
-    # Create a custom mock client that calls the tool
+    # Capture the tool so we can invoke it in the mock
+    captured_tool = None
+    
+    # Patch _create_submit_proposal_tool to capture the tool
+    original_create = ActionTriageAgent._create_submit_proposal_tool
+    def patched_create(self, storage):
+        nonlocal captured_tool
+        captured_tool = original_create(self, storage)
+        return captured_tool
+    
+    # Create a custom mock client that simulates multi-turn conversation
     class MockClaudeSDKClient:
         def __init__(self, options):
             self.options = options
-            self._tool_map = {t.name: t for t in options.allowed_tools}
         
         async def query(self, prompt):
             pass
         
         async def receive_response(self):
-            # First call: turn 1 + turn 2 messages
+            # Turn 1: Initial analysis
             yield turn1_message
+            
+            # Turn 2: Follow-up analysis
             yield turn2_message
             
-            # Invoke the submit_proposal tool
-            submit_tool = self._tool_map.get("submit_proposal")
-            if submit_tool:
-                await submit_tool.handler({
+            # Turn 3: Invoke submit_proposal tool directly
+            if captured_tool:
+                await captured_tool.handler({
                     "identified_issue": "npm install failed due to missing package-lock.json",
                     "fix_effort": "small",
                     "remediation_plan": "1. Run npm install locally\n2. Commit package-lock.json\n3. Re-run workflow"
                 })
             
-            # Then yield the tool use message
+            # Yield the tool use message and final result
             yield turn3_message
             yield result_message
         
@@ -512,19 +542,20 @@ async def test_diagnose_and_propose_multi_turn_conversation(settings, failure_co
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
     
-    # Patch ClaudeSDKClient in the ai_agent module
-    with patch('github_action_triage.agent.ai_agent.ClaudeSDKClient', MockClaudeSDKClient):
-        # Create agent and run diagnose_and_propose
-        agent = ActionTriageAgent(settings)
-        
-        # Should now successfully complete without NotImplementedError
-        proposal = await agent.diagnose_and_propose(failure_context)
-        
-        # Verify proposal extracted from submit_proposal tool call
-        assert proposal is not None
-        assert proposal.identified_issue == "npm install failed due to missing package-lock.json"
-        assert proposal.fix_effort == "small"
-        assert proposal.remediation_plan == "1. Run npm install locally\n2. Commit package-lock.json\n3. Re-run workflow"
+    # Patch both the tool creation and ClaudeSDKClient
+    with patch.object(ActionTriageAgent, '_create_submit_proposal_tool', patched_create):
+        with patch('github_action_triage.agent.ai_agent.ClaudeSDKClient', MockClaudeSDKClient):
+            # Create agent and run diagnose_and_propose
+            agent = ActionTriageAgent(settings)
+            
+            # Should now successfully complete without NotImplementedError
+            proposal = await agent.diagnose_and_propose(failure_context)
+            
+            # Verify proposal extracted from submit_proposal tool call
+            assert proposal is not None
+            assert proposal.identified_issue == "npm install failed due to missing package-lock.json"
+            assert proposal.fix_effort == "small"
+            assert proposal.remediation_plan == "1. Run npm install locally\n2. Commit package-lock.json\n3. Re-run workflow"
 
 
 @pytest.mark.asyncio

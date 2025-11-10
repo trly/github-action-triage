@@ -75,6 +75,7 @@ async def test_triage_service_contract():
     # Mock the agent to return a proposal
     from github_action_triage.agent.ports import RemediationProposal
     mock_proposal = RemediationProposal(
+        issue_title="Test issue",
         identified_issue="Test issue",
         fix_effort="small",
         remediation_plan="Test plan"
@@ -145,6 +146,7 @@ async def test_process_failure_creates_issue_only():
     mock_context_provider.fetch_failure_context.return_value = mock_context
     
     mock_proposal = RemediationProposal(
+        issue_title="Test failure in authentication",
         identified_issue="Test failure in authentication",
         fix_effort="small",
         remediation_plan="1. Fix test\n2. Verify"

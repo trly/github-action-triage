@@ -80,6 +80,7 @@ def failure_context(failure_event):
 @pytest.fixture
 def remediation_proposal():
     return RemediationProposal(
+        issue_title="npm install failed",
         identified_issue="npm install failed due to missing package-lock.json",
         fix_effort="small",
         remediation_plan="1. Run npm install locally\n2. Commit package-lock.json\n3. Re-run workflow"
@@ -269,6 +270,7 @@ async def test_submit_proposal_tool_returns_remediation():
     submit_tool = agent._create_submit_proposal_tool(proposal_storage)
     
     result = await submit_tool.handler({
+        "issue_title": "Dependency version conflict",
         "identified_issue": "Dependency version conflict in package.json",
         "fix_effort": "medium",
         "remediation_plan": "1. Update conflicting dependencies\n2. Run npm audit fix\n3. Test locally\n4. Commit changes"
@@ -282,6 +284,7 @@ async def test_submit_proposal_tool_returns_remediation():
     stored_proposal = proposal_storage["proposal"]
     assert stored_proposal is not None
     assert isinstance(stored_proposal, RemediationProposal)
+    assert stored_proposal.issue_title == "Dependency version conflict"
     assert stored_proposal.identified_issue == "Dependency version conflict in package.json"
     assert stored_proposal.fix_effort == "medium"
     assert stored_proposal.remediation_plan == "1. Update conflicting dependencies\n2. Run npm audit fix\n3. Test locally\n4. Commit changes"

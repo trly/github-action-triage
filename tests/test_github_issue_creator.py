@@ -43,6 +43,7 @@ def failure_event():
 @pytest.fixture
 def remediation_proposal():
     return RemediationProposal(
+        issue_title="Test failure in authentication module",
         identified_issue="Test failure in authentication module",
         fix_effort="small",
         remediation_plan="1. Update test assertion\n2. Verify expected value\n3. Run tests",
@@ -265,6 +266,7 @@ async def test_format_issue_body_includes_all_required_sections(
     
     # Test with "large" fix effort
     large_effort_proposal = RemediationProposal(
+        issue_title="Complex authentication refactor needed",
         identified_issue="Complex authentication refactor needed",
         fix_effort="large",
         remediation_plan="1. Audit current auth\n2. Design new system\n3. Implement\n4. Test thoroughly",

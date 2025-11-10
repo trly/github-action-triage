@@ -35,7 +35,7 @@ class GitHubIssueCreatorAdapter(IssueCreator):
         response = await installation_client.rest.issues.async_create(
             owner=event.repository.owner,
             repo=event.repository.name,
-            title=proposal.identified_issue,
+            title=proposal.issue_title,
             body=body,
             labels=["triage", "ci"],
         )

@@ -62,6 +62,9 @@ class FailureContext(BaseModel):
 
 
 class RemediationProposal(BaseModel):
+    issue_title: str = Field(
+        ..., description="Short, concise issue title (< 80 characters)"
+    )
     identified_issue: str = Field(
         ..., description="Clear description of the issue causing the workflow failure"
     )

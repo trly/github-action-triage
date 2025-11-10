@@ -52,8 +52,9 @@ SYSTEM_PROMPT_WORKFLOW = """
 
 ## Remediation Proposal Requirements
 
-When confident in your analysis, invoke the submit_proposal tool with three parameters:
+When confident in your analysis, invoke the submit_proposal tool with four parameters:
 
+- **issue_title**: Short, actionable title for GitHub issue (< 80 characters). Example: "Ruff linting errors in source files"
 - **identified_issue**: Precise description of the root cause (not just the symptom)
 - **fix_effort**: Estimated remediation effort based on the following criteria:
   - `small`: < 1 hour (configuration adjustments, dependency version updates, trivial fixes)
@@ -72,6 +73,10 @@ When confident in your analysis, invoke the submit_proposal tool with three para
 SUBMIT_PROPOSAL_SCHEMA = {
     "type": "object",
     "properties": {
+        "issue_title": {
+            "type": "string",
+            "description": "Short, concise issue title (< 80 characters)"
+        },
         "identified_issue": {
             "type": "string",
             "description": "Clear description of the issue causing the workflow failure"
@@ -86,7 +91,7 @@ SUBMIT_PROPOSAL_SCHEMA = {
             "description": "Step-by-step plan for fixing the issue"
         }
     },
-    "required": ["identified_issue", "fix_effort", "remediation_plan"]
+    "required": ["issue_title", "identified_issue", "fix_effort", "remediation_plan"]
 }
 
 
@@ -269,6 +274,7 @@ Please investigate this failure and submit a remediation proposal once you have 
             
             Args:
                 args: Dictionary containing:
+                    - issue_title: Short, concise issue title (< 80 characters)
                     - identified_issue: Clear description of the issue causing the workflow failure
                     - fix_effort: Estimated effort to fix (small, medium, or large)
                     - remediation_plan: Step-by-step plan for fixing the issue
@@ -280,6 +286,7 @@ Please investigate this failure and submit a remediation proposal once you have 
                 ValueError: If fix_effort is not one of the valid values
                 RuntimeError: If a proposal has already been submitted in this run
             """
+            issue_title = args["issue_title"]
             identified_issue = args["identified_issue"]
             fix_effort = args["fix_effort"]
             remediation_plan = args["remediation_plan"]
@@ -295,6 +302,7 @@ Please investigate this failure and submit a remediation proposal once you have 
             
             # Store the proposal in run-scoped storage
             proposal_storage["proposal"] = RemediationProposal(
+                issue_title=issue_title,
                 identified_issue=identified_issue,
                 fix_effort=fix_effort,  # type: ignore
                 remediation_plan=remediation_plan,

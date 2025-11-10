@@ -118,6 +118,7 @@ async def test_submit_proposal_validates_fix_effort(settings, failure_context):
     
     # Valid fix_effort values should succeed
     result = await tool.handler({
+        "issue_title": "npm install failed",
         "identified_issue": "npm install failed due to missing dependency",
         "fix_effort": "small",
         "remediation_plan": "Add missing dependency to package.json"
@@ -130,6 +131,7 @@ async def test_submit_proposal_validates_fix_effort(settings, failure_context):
     tool2 = agent._create_submit_proposal_tool(proposal_storage2)
     with pytest.raises(ValueError, match="fix_effort must be one of"):
         await tool2.handler({
+            "issue_title": "Some title",
             "identified_issue": "Some issue",
             "fix_effort": "invalid",
             "remediation_plan": "Some plan"
@@ -150,6 +152,7 @@ async def test_submit_proposal_stores_in_run_scoped_storage(settings, failure_co
     
     # Submit a proposal
     await tool.handler({
+        "issue_title": "npm install failed",
         "identified_issue": "npm install failed",
         "fix_effort": "medium",
         "remediation_plan": "Update package.json and run npm install"
@@ -157,6 +160,7 @@ async def test_submit_proposal_stores_in_run_scoped_storage(settings, failure_co
     
     # Proposal should be stored in run-scoped storage
     assert proposal_storage["proposal"] is not None
+    assert proposal_storage["proposal"].issue_title == "npm install failed"
     assert proposal_storage["proposal"].identified_issue == "npm install failed"
     assert proposal_storage["proposal"].fix_effort == "medium"
     assert proposal_storage["proposal"].remediation_plan == "Update package.json and run npm install"
@@ -173,6 +177,7 @@ async def test_submit_proposal_errors_on_duplicate_call(settings, failure_contex
     
     # First call succeeds
     await tool.handler({
+        "issue_title": "First issue",
         "identified_issue": "First issue",
         "fix_effort": "small",
         "remediation_plan": "First plan"
@@ -181,6 +186,7 @@ async def test_submit_proposal_errors_on_duplicate_call(settings, failure_contex
     # Second call should raise error
     with pytest.raises(RuntimeError, match="Proposal already submitted"):
         await tool.handler({
+            "issue_title": "Second issue",
             "identified_issue": "Second issue",
             "fix_effort": "large",
             "remediation_plan": "Second plan"
@@ -197,6 +203,7 @@ async def test_submit_proposal_returns_success_message(settings, failure_context
     tool = agent._create_submit_proposal_tool(proposal_storage)
     
     result = await tool.handler({
+        "issue_title": "Test issue",
         "identified_issue": "Test issue",
         "fix_effort": "medium",
         "remediation_plan": "Test plan"
@@ -224,6 +231,7 @@ async def test_concurrent_diagnoses_have_isolated_proposal_storage(settings, fai
     
     # Submit proposal in run 1
     await tool_run1.handler({
+        "issue_title": "Issue from run 1",
         "identified_issue": "Issue from run 1",
         "fix_effort": "small",
         "remediation_plan": "Plan for run 1"
@@ -231,6 +239,7 @@ async def test_concurrent_diagnoses_have_isolated_proposal_storage(settings, fai
     
     # Submit proposal in run 2
     await tool_run2.handler({
+        "issue_title": "Issue from run 2",
         "identified_issue": "Issue from run 2",
         "fix_effort": "large",
         "remediation_plan": "Plan for run 2"
@@ -293,6 +302,7 @@ async def test_claude_agent_uses_configured_model_and_env(settings, failure_cont
             # Call the captured tool directly
             if captured_tool:
                 await captured_tool.handler({
+                    "issue_title": "Test issue",
                     "identified_issue": "Test issue",
                     "fix_effort": "small",
                     "remediation_plan": "Test plan"
@@ -362,6 +372,7 @@ async def test_tool_schema_is_valid_json_schema(settings, failure_context):
             # Call the captured tool directly
             if captured_tool:
                 await captured_tool.handler({
+                    "issue_title": "Test",
                     "identified_issue": "Test",
                     "fix_effort": "small",
                     "remediation_plan": "Test plan"
@@ -527,6 +538,7 @@ async def test_diagnose_and_propose_multi_turn_conversation(settings, failure_co
             # Turn 3: Invoke submit_proposal tool directly
             if captured_tool:
                 await captured_tool.handler({
+                    "issue_title": "npm install failed",
                     "identified_issue": "npm install failed due to missing package-lock.json",
                     "fix_effort": "small",
                     "remediation_plan": "1. Run npm install locally\n2. Commit package-lock.json\n3. Re-run workflow"

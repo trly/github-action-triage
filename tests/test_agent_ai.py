@@ -525,3 +525,125 @@ async def test_diagnose_and_propose_multi_turn_conversation(settings, failure_co
         assert proposal.identified_issue == "npm install failed due to missing package-lock.json"
         assert proposal.fix_effort == "small"
         assert proposal.remediation_plan == "1. Run npm install locally\n2. Commit package-lock.json\n3. Re-run workflow"
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_states_no_local_access_without_mcp(settings, failure_context):
+    """Verify system prompt warns about no local access even when Sourcegraph MCP is disabled."""
+    from unittest.mock import patch
+    
+    # Settings without Sourcegraph token (MCP disabled)
+    settings_no_mcp = Settings(
+        anthropic_api_key="test-key",
+        sourcegraph_token="",  # Empty token = no MCP
+        sourcegraph_mcp_url=""
+    )
+    
+    captured_options = None
+    
+    class MockClaudeSDKClient:
+        def __init__(self, options):
+            nonlocal captured_options
+            captured_options = options
+        
+        async def query(self, prompt):
+            pass
+        
+        async def receive_response(self):
+            from dataclasses import dataclass
+            @dataclass
+            class ResultMessage:
+                subtype: str = "success"
+                duration_ms: int = 1000
+                duration_api_ms: int = 900
+                is_error: bool = False
+                num_turns: int = 1
+                session_id: str = "test"
+            
+            # Just yield result without calling tool (we'll check for the expected error)
+            yield ResultMessage()
+        
+        async def __aenter__(self):
+            return self
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    with patch('github_action_triage.agent.ai_agent.ClaudeSDKClient', MockClaudeSDKClient):
+        agent = ActionTriageAgent(settings_no_mcp)
+        
+        # We expect this to raise RuntimeError because we don't submit a proposal
+        # But we can still check the prompt was configured correctly
+        with pytest.raises(RuntimeError, match="no proposal was submitted"):
+            await agent.diagnose_and_propose(failure_context)
+        
+        # Verify system prompt contains warning about no local access
+        assert captured_options is not None
+        system_prompt = captured_options.system_prompt
+        assert "do not have a local checkout" in system_prompt.lower()
+        assert "do not assume direct filesystem access" in system_prompt.lower()
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_emphasizes_sourcegraph_mcp_when_enabled(settings, failure_context):
+    """Verify system prompt emphasizes Sourcegraph MCP usage when configured."""
+    from unittest.mock import patch
+    
+    # Settings with Sourcegraph configured (MCP enabled)
+    settings_with_mcp = Settings(
+        anthropic_api_key="test-key",
+        sourcegraph_token="test-sg-token",
+        sourcegraph_mcp_url="https://sourcegraph.example.com/mcp"
+    )
+    
+    captured_options = None
+    
+    class MockClaudeSDKClient:
+        def __init__(self, options):
+            nonlocal captured_options
+            captured_options = options
+        
+        async def query(self, prompt):
+            pass
+        
+        async def receive_response(self):
+            from dataclasses import dataclass
+            @dataclass
+            class ResultMessage:
+                subtype: str = "success"
+                duration_ms: int = 1000
+                duration_api_ms: int = 900
+                is_error: bool = False
+                num_turns: int = 1
+                session_id: str = "test"
+            
+            # Just yield result without calling tool (we'll check for the expected error)
+            yield ResultMessage()
+        
+        async def __aenter__(self):
+            return self
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    with patch('github_action_triage.agent.ai_agent.ClaudeSDKClient', MockClaudeSDKClient):
+        agent = ActionTriageAgent(settings_with_mcp)
+        
+        # We expect this to raise RuntimeError because we don't submit a proposal
+        # But we can still check the prompt was configured correctly
+        with pytest.raises(RuntimeError, match="no proposal was submitted"):
+            await agent.diagnose_and_propose(failure_context)
+        
+        # Verify system prompt emphasizes Sourcegraph MCP as exclusive access method
+        assert captured_options is not None
+        system_prompt = captured_options.system_prompt
+        
+        # Should contain base warning
+        assert "do not have a local checkout" in system_prompt.lower()
+        
+        # Should contain MCP-specific emphasis
+        assert "Remote Repository Access" in system_prompt
+        assert "All repository code inspection must happen through the Sourcegraph MCP server" in system_prompt
+        assert "the ONLY way to read repository files" in system_prompt
+        assert "the ONLY way to list repository contents" in system_prompt
+        assert "Use these MCP tools exclusively" in system_prompt

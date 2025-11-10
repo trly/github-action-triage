@@ -1,15 +1,23 @@
 from typing import Any
 import asyncio
 import logging
-from claude_agent_sdk import tool, ClaudeSDKClient
-from claude_agent_sdk.types import ClaudeAgentOptions
+from claude_agent_sdk import tool, ClaudeSDKClient, create_sdk_mcp_server
+from claude_agent_sdk.types import (
+    ClaudeAgentOptions,
+    ResultMessage,
+    AssistantMessage,
+    TextBlock,
+)
 from github_action_triage.agent.ports import (
     RemediationAgent,
     FailureContext,
     RemediationProposal,
 )
 from github_action_triage.agent.config import Settings
-from github_action_triage.agent.mcp import create_sourcegraph_mcp_server
+from github_action_triage.agent.mcp import (
+    create_sourcegraph_mcp_server,
+    MCP_SOURCEGRAPH_SERVER_NAME,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,19 +78,19 @@ SUBMIT_PROPOSAL_SCHEMA = {
     "properties": {
         "identified_issue": {
             "type": "string",
-            "description": "Clear description of the issue causing the workflow failure"
+            "description": "Clear description of the issue causing the workflow failure",
         },
         "fix_effort": {
             "type": "string",
             "enum": ["small", "medium", "large"],
-            "description": "Estimated effort to fix (small: <1h, medium: 1-4h, large: >4h)"
+            "description": "Estimated effort to fix (small: <1h, medium: 1-4h, large: >4h)",
         },
         "remediation_plan": {
             "type": "string",
-            "description": "Step-by-step plan for fixing the issue"
-        }
+            "description": "Step-by-step plan for fixing the issue",
+        },
     },
-    "required": ["identified_issue", "fix_effort", "remediation_plan"]
+    "required": ["identified_issue", "fix_effort", "remediation_plan"],
 }
 
 
@@ -99,109 +107,140 @@ class ActionTriageAgent(RemediationAgent):
         self, context: FailureContext
     ) -> RemediationProposal:
         """Diagnose workflow failure and propose remediation using Claude SDK.
-        
+
         Creates ClaudeSDKClient with submit_proposal tool and optional MCP server,
         iterates message loop until ResultMessage, extracts proposal from storage.
-        
+
         Args:
             context: FailureContext with logs, commits, and metadata
-            
+
         Returns:
             RemediationProposal extracted from agent's submit_proposal call
-            
+
         Raises:
             RuntimeError: If no proposal submitted on successful completion
             TimeoutError: If analysis exceeds max_turns or timeout
         """
         # Create run-scoped storage for this analysis
-        proposal_storage: dict[str, RemediationProposal | None] = {"proposal": None}
+        proposal_storage: dict[str, RemediationProposal | None] = {
+            "proposal": None}
         submit_tool = self._create_submit_proposal_tool(proposal_storage)
-        
-        # Configure MCP server if available
-        mcp_servers = create_sourcegraph_mcp_server(self._settings)
-        has_mcp = mcp_servers is not None
-        
+
+        # Create SDK MCP server for submit_proposal tool
+        sdk_mcp_server = create_sdk_mcp_server(
+            name="triage", version="1.0.0", tools=[submit_tool]
+        )
+
+        # Configure MCP servers (Sourcegraph + custom tools)
+        mcp_servers = create_sourcegraph_mcp_server(self._settings) or {}
+        mcp_servers["triage"] = sdk_mcp_server
+        has_sourcegraph = MCP_SOURCEGRAPH_SERVER_NAME in mcp_servers
+
         # Build system prompt dynamically based on MCP availability
         system_prompt = SYSTEM_PROMPT_BASE
-        if has_mcp:
+        if has_sourcegraph:
             system_prompt += SYSTEM_PROMPT_MCP_TOOLS
         system_prompt += SYSTEM_PROMPT_WORKFLOW
-        
+
         # Format initial prompt with failure context
         initial_prompt = self._format_initial_prompt(context)
-        
-        # Configure allowed tools list
-        allowed_tool_names = ["submit_proposal"]
-        if has_mcp:
-            # Add Sourcegraph MCP tools
-            allowed_tool_names.extend([
-                "sg_read_file",
-                "sg_list_files",
-                "sg_list_repos",
-                "sg_keyword_search",
-                "sg_nls_search",
-                "sg_go_to_definition",
-                "sg_find_references",
-                "sg_commit_search",
-                "sg_diff_search",
-                "sg_compare_revisions",
-                "sg_get_contributor_repos",
-            ])
-        
+
+        # Configure allowed tools list using proper MCP server names
+        allowed_tool_names = ["mcp__triage__submit_proposal"]
+        if has_sourcegraph:
+            # Add Sourcegraph MCP tools using the server name constant
+            allowed_tool_names.extend(
+                [
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_read_file",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_list_files",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_list_repos",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_keyword_search",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_nls_search",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_go_to_definition",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_find_references",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_commit_search",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_diff_search",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_compare_revisions",
+                    f"mcp__{MCP_SOURCEGRAPH_SERVER_NAME}__sg_get_contributor_repos",
+                ]
+            )
+
         # Configure Claude SDK client with model and API key from settings
         options = ClaudeAgentOptions(
             model=self._settings.claude_model,
             system_prompt=system_prompt,
-            tools=[submit_tool],
             allowed_tools=allowed_tool_names,
-            mcp_servers=mcp_servers or {},
+            mcp_servers=mcp_servers,
             max_turns=self._settings.claude_max_turns,
-            env={"ANTHROPIC_API_KEY": self._settings.anthropic_api_key.get_secret_value()},
+            env={
+                "ANTHROPIC_API_KEY": self._settings.anthropic_api_key.get_secret_value()
+            },
         )
-        
-        logger.info(
-            f"Starting diagnosis for {context.repository_full_name} "
-            f"(run_id={context.event.workflow.run_id}, model={self._settings.claude_model}, "
-            f"MCP={'enabled' if has_mcp else 'disabled'})"
+
+        logger.debug(
+            "Starting diagnosis for %s (run_id=%s, model=%s, MCP=%s)",
+            context.repository_full_name,
+            context.event.workflow.run_id,
+            self._settings.claude_model,
+            'enabled' if has_sourcegraph else 'disabled'
         )
-        
-        # Run message loop with timeout
-        async def run_analysis():
-            async with ClaudeSDKClient(options) as client:
-                await client.query(initial_prompt)
-                
+
+        # Run message loop with proper error handling
+        final_result: ResultMessage | None = None
+
+        async with ClaudeSDKClient(options) as client:
+            await client.query(initial_prompt)
+
+            async def iterate_messages():
+                nonlocal final_result
                 async for message in client.receive_response():
-                    # Check if we got a ResultMessage (end of conversation)
-                    # ResultMessage has subtype attribute that other message types don't have
-                    if hasattr(message, 'subtype') and hasattr(message, 'is_error'):
-                        logger.info(
-                            f"Analysis complete: {message.num_turns} turns, "
-                            f"{message.duration_ms}ms, error={message.is_error}"
+                    # Log assistant messages for debugging
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                logger.debug("Claude: %s", block.text[:500])
+
+                    # Check for final result message
+                    elif isinstance(message, ResultMessage):
+                        final_result = message
+                        logger.debug(
+                            "Analysis complete: turns=%s, duration_ms=%s, error=%s",
+                            message.num_turns,
+                            message.duration_ms,
+                            message.is_error
                         )
                         break
-        
-        try:
-            await asyncio.wait_for(
-                run_analysis(),
-                timeout=self._settings.analysis_timeout_seconds
+
+            try:
+                await asyncio.wait_for(
+                    iterate_messages(), timeout=self._settings.analysis_timeout_seconds
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Analysis timed out after %ss for %s (run_id=%s)",
+                    self._settings.analysis_timeout_seconds,
+                    context.repository_full_name,
+                    context.event.workflow.run_id
+                )
+                raise
+
+        # Check if the analysis completed with an error
+        if final_result and final_result.is_error:
+            error_msg = getattr(final_result, "result", "unknown error")
+            raise RuntimeError(
+                f"Claude agent analysis ended with error: {error_msg}"
             )
-        except asyncio.TimeoutError:
-            logger.error(
-                f"Analysis timed out after {self._settings.analysis_timeout_seconds}s "
-                f"for {context.repository_full_name} (run_id={context.event.workflow.run_id})"
-            )
-            raise
-        
+
         # Extract proposal from storage
         proposal = proposal_storage.get("proposal")
         if proposal is None:
             raise RuntimeError(
-                "Analysis completed successfully but no proposal was submitted. "
-                "This indicates the agent did not call submit_proposal."
+                "Analysis completed but no proposal was submitted. "
+                "The agent did not call submit_proposal."
             )
-        
+
         return proposal
-    
+
     def _format_initial_prompt(self, context: FailureContext) -> str:
         """Format initial prompt with FailureContext data."""
         return f"""Analyze this GitHub Actions workflow failure and propose a remediation plan.
@@ -227,30 +266,31 @@ Please investigate this failure and submit a remediation proposal once you have 
         self, proposal_storage: dict[str, RemediationProposal | None]
     ):
         """Create a run-scoped submit_proposal tool with isolated storage.
-        
+
         Args:
             proposal_storage: Dictionary to store proposal for this run (mutated by tool)
-            
+
         Returns:
             Tool function decorated with @tool
         """
+
         @tool(
             name="submit_proposal",
             description="Submit a remediation proposal after diagnosing the workflow failure. Call this once you have high confidence in your diagnosis.",
-            input_schema=SUBMIT_PROPOSAL_SCHEMA
+            input_schema=SUBMIT_PROPOSAL_SCHEMA,
         )
         async def submit_proposal_tool(args: dict[str, Any]) -> dict[str, Any]:
             """Tool for Claude to submit a remediation proposal.
-            
+
             Args:
                 args: Dictionary containing:
                     - identified_issue: Clear description of the issue causing the workflow failure
                     - fix_effort: Estimated effort to fix (small, medium, or large)
                     - remediation_plan: Step-by-step plan for fixing the issue
-                
+
             Returns:
                 SDK tool response with success message
-                
+
             Raises:
                 ValueError: If fix_effort is not one of the valid values
                 RuntimeError: If a proposal has already been submitted in this run
@@ -258,28 +298,27 @@ Please investigate this failure and submit a remediation proposal once you have 
             identified_issue = args["identified_issue"]
             fix_effort = args["fix_effort"]
             remediation_plan = args["remediation_plan"]
-            
+
             # Validate fix_effort first (before checking duplicate submission)
             valid_efforts = ["small", "medium", "large"]
             if fix_effort not in valid_efforts:
-                raise ValueError(f"fix_effort must be one of {valid_efforts}, got '{fix_effort}'")
-            
+                raise ValueError(
+                    f"fix_effort must be one of {valid_efforts}, got '{fix_effort}'"
+                )
+
             # Check if proposal already submitted in this run
             if proposal_storage.get("proposal") is not None:
                 raise RuntimeError("Proposal already submitted")
-            
+
             # Store the proposal in run-scoped storage
             proposal_storage["proposal"] = RemediationProposal(
                 identified_issue=identified_issue,
                 fix_effort=fix_effort,  # type: ignore
                 remediation_plan=remediation_plan,
             )
-            
+
             return {
-                "content": [{
-                    "type": "text",
-                    "text": "Proposal submitted successfully"
-                }]
+                "content": [{"type": "text", "text": "Proposal submitted successfully"}]
             }
-        
+
         return submit_proposal_tool

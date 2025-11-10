@@ -22,7 +22,7 @@ def is_failure_workflow_job(
 
 
 def log_workflow_job_failure(event: WebhookWorkflowJobCompleted) -> None:
-    logger.info(
+    logger.debug(
         "workflow_job.completed.failure",
         extra={
             "repository": event.repository.full_name,

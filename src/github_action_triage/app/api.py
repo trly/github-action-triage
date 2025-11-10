@@ -43,7 +43,7 @@ class TriageService:
             context = await self._context_provider.fetch_failure_context(event)
             proposal = await self._agent.diagnose_and_propose(context)
             
-            logger.info(
+            logger.debug(
                 "Diagnosis complete",
                 extra={
                     "issue": proposal.identified_issue,
@@ -54,7 +54,7 @@ class TriageService:
             success = await self._actuator.apply_fix(event, proposal)
             
             if success:
-                logger.info("Fix applied successfully")
+                logger.debug("Fix applied successfully")
             else:
                 logger.warning("Failed to apply fix")
                 

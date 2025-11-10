@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import FastAPI
 from githubkit import GitHub, AppAuthStrategy
 from github_action_triage.app.web.api import router as github_router
@@ -38,11 +39,11 @@ def create_triage_service(settings: Settings) -> TriageService:
 
 
 def create_app() -> FastAPI:
-    # Temporarily disable logging setup
-    # logging.basicConfig(
-    #     level=logging.INFO,
-    #     format="%(levelname)s:     %(name)s - %(message)s",
-    # )
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format="%(levelname)s:     %(name)s - %(message)s",
+    )
 
     app = FastAPI(
         title="GitHub Action Triage",

@@ -19,6 +19,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: web
     container_name: triage-web
     command: sh -c "cd /app && /app/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
@@ -45,9 +46,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: worker
     container_name: triage-worker
-    user: nobody
     command: sh -c "cd /app && /app/venv/bin/python -m celery -A github_action_triage.app.celery_app:app worker --loglevel=info --concurrency=2"
+    user: appuser
     volumes:
       - ./src:/app/src:ro
     environment:

@@ -1,5 +1,5 @@
 from celery import Celery
-from github_action_triage.app.config import get_settings
+from github_action_triage.agent.config import get_settings
 
 settings = get_settings()
 

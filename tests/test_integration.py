@@ -85,25 +85,33 @@ def remediation_proposal():
 
 
 @pytest.mark.asyncio
-async def test_webhook_triggers_background_task(monkeypatch, failure_event):
-    """Verify that webhook endpoint triggers background processing for workflow failures."""
-    background_tasks_called = []
+async def test_webhook_triggers_background_task(monkeypatch, failure_event, failure_context):
+    """Verify that webhook endpoint triggers Celery task for workflow failures."""
 
-    class MockBackgroundTasks:
-        def add_task(self, func, *args, **kwargs):
-            background_tasks_called.append({"func": func, "args": args, "kwargs": kwargs})
+    celery_task_calls = []
 
-    # Mock the triage service handle_failure to avoid real processing
-    from github_action_triage.app.api import TriageResult, TriageService
-    from github_action_triage.app.events.outcomes import TriageOutcome
+    class MockCeleryTask:
+        def __init__(self, task_id):
+            self.id = task_id
 
-    async def mock_handle_failure(self, event):
-        return TriageResult(
-            outcome=TriageOutcome.DEFERRED,
-            message="Scheduled for background processing",
-        )
+        def delay(self, **kwargs):
+            celery_task_calls.append(kwargs)
+            return self
 
-    monkeypatch.setattr(TriageService, "handle_failure", mock_handle_failure)
+    mock_task = MockCeleryTask("test-task-id-123")
+
+    # Mock analyze_workflow_failure.delay
+    import github_action_triage.app.web.api as api_module
+
+    monkeypatch.setattr(api_module, "analyze_workflow_failure", mock_task)
+
+    # Mock context provider to avoid real GitHub API calls
+    from unittest.mock import AsyncMock
+
+    from github_action_triage.agent.ports import GitHubContextProvider
+
+    mock_context_provider = AsyncMock(spec=GitHubContextProvider)
+    mock_context_provider.fetch_failure_context.return_value = failure_context
 
     # Setup githubkit parse stub
     import github_action_triage.app.web.api as api
@@ -163,6 +171,10 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event):
 
     # Create test client
     app = create_app()
+    
+    # Inject mocked context provider into app state
+    app.state.triage_service._context_provider = mock_context_provider
+    
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         payload = json.dumps(
@@ -173,11 +185,21 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event):
             headers={
                 "X-GitHub-Event": "workflow_job",
                 "X-Hub-Signature-256": compute_signature(payload),
+                "X-GitHub-Delivery": "test-delivery-123",
             },
             content=payload,
         )
 
     assert response.status_code == 202
+    assert response.json()["task_id"] == "test-task-id-123"
+    
+    # Verify task was enqueued with correct parameters
+    assert len(celery_task_calls) == 1
+    task_call = celery_task_calls[0]
+    assert task_call["github_delivery_id"] == "test-delivery-123"
+    assert "context" in task_call
+    assert task_call["context"]["repository_full_name"] == "test-org/test-repo"
+    assert task_call["context"]["head_commit_sha"] == "abc123"
 
 
 @pytest.mark.asyncio

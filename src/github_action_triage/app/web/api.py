@@ -53,9 +53,8 @@ async def handle_webhook(request: Request) -> JSONResponse:
         # Extract GitHub delivery ID for idempotency
         github_delivery_id = request.headers.get("X-GitHub-Delivery")
         if not github_delivery_id:
-            logger.warning(
-                f"Missing X-GitHub-Delivery header for {triage_event.repository.owner}/{triage_event.repository.name}"
-            )
+            repo = f"{triage_event.repository.owner}/{triage_event.repository.name}"
+            logger.warning(f"Missing X-GitHub-Delivery header for {repo}")
         
         # Fetch failure context
         context = await service._context_provider.fetch_failure_context(triage_event)

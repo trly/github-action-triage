@@ -106,61 +106,153 @@ def compute_signature(payload: bytes, secret: str = "test-secret") -> str:
 
 
 @pytest.mark.asyncio
-async def test_logs_failure_workflow_job(caplog, test_client, monkeypatch):
+async def test_logs_failure_workflow_job(caplog, monkeypatch):
     caplog.set_level("INFO")
 
-    # Mock the triage service to avoid real API calls
-    from github_action_triage.app.api import TriageResult, TriageService
-    from github_action_triage.app.events.outcomes import TriageOutcome
+    # Mock Celery task to avoid real task enqueueing
+    from unittest.mock import AsyncMock
+    
+    class MockCeleryTask:
+        id = "test-task-id"
+        def delay(self, **kwargs):  # noqa: ARG002
+            return self
+    
+    import github_action_triage.app.web.api as api_module
+    monkeypatch.setattr(api_module, "analyze_workflow_failure", MockCeleryTask())
 
-    async def mock_handle_failure(self, event):
-        return TriageResult(
-            outcome=TriageOutcome.DEFERRED,
-            message="Failure context captured for AI triage",
-        )
-
-    monkeypatch.setattr(TriageService, "handle_failure", mock_handle_failure)
-
-    payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
-    response = await test_client.post(
-        "/github/webhook",
-        headers={
-            "X-GitHub-Event": "workflow_job",
-            "X-Hub-Signature-256": compute_signature(payload),
-        },
-        content=payload,
+    # Mock context provider to avoid GitHub API calls
+    from github_action_triage.agent.ports import FailureContext, GitHubContextProvider
+    from github_action_triage.app.events.models import (
+        FailureSummary,
+        RepositoryRef,
+        WorkflowRef,
+        WorkflowRunFailureEvent,
     )
+    
+    mock_context_provider = AsyncMock(spec=GitHubContextProvider)
+    mock_context_provider.fetch_failure_context.return_value = FailureContext(
+        event=WorkflowRunFailureEvent(
+            installation_id=12345,
+            repository=RepositoryRef(owner="test-org", name="test-repo"),
+            workflow=WorkflowRef(
+                run_id="67890",
+                job_id="12345",
+                workflow_name="CI",
+                job_name="build",
+                run_url="https://github.com/test-org/test-repo/actions/runs/67890",
+            ),
+            failure=FailureSummary(
+                conclusion="failure",
+                logs_snippet="Error",
+            ),
+        ),
+        repository_full_name="test-org/test-repo",
+        head_commit_sha="abc123",
+        branch_ref="refs/heads/main",
+        job_html_url="https://github.com/test-org/test-repo/actions/runs/67890/job/12345",
+        logs_excerpt="Error",
+        workflow_file_path=".github/workflows/ci.yml",
+        recent_commits=["abc123"],
+    )
+    
+    monkeypatch.setenv("TRIAGE_GITHUB_WEBHOOK_SECRET", "test-secret")
+    
+    # Create app after mocks are set up
+    app = create_app()
+    app.state.triage_service._context_provider = mock_context_provider
+    
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
+        response = await client.post(
+            "/github/webhook",
+            headers={
+                "X-GitHub-Event": "workflow_job",
+                "X-Hub-Signature-256": compute_signature(payload),
+            },
+            content=payload,
+        )
+    
     assert response.status_code == 202
     assert "workflow_job.completed.failure" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_invokes_failure_handler_for_job_failure(caplog, test_client, monkeypatch):
+async def test_invokes_failure_handler_for_job_failure(caplog, monkeypatch):
     caplog.set_level("INFO")
 
-    # Mock the triage service to avoid real API calls
-    from github_action_triage.app.api import TriageService
+    # Mock Celery task to verify it's called
+    import logging
+    from unittest.mock import AsyncMock
+    
+    celery_calls = []
+    
+    class MockCeleryTask:
+        id = "test-task-id"
+        def delay(self, **kwargs):
+            celery_calls.append(kwargs)
+            logging.getLogger(__name__).info("Background triage processing started")
+            return self
+    
+    import github_action_triage.app.web.api as api_module
+    monkeypatch.setattr(api_module, "analyze_workflow_failure", MockCeleryTask())
 
-    async def mock_process_failure_async(self, event):
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.info("Background triage processing started")
-
-    # Patch the TriageService process_failure_async method
-    monkeypatch.setattr(TriageService, "process_failure_async", mock_process_failure_async)
-
-    payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
-    response = await test_client.post(
-        "/github/webhook",
-        headers={
-            "X-GitHub-Event": "workflow_job",
-            "X-Hub-Signature-256": compute_signature(payload),
-        },
-        content=payload,
+    # Mock context provider to avoid GitHub API calls
+    from github_action_triage.agent.ports import FailureContext, GitHubContextProvider
+    from github_action_triage.app.events.models import (
+        FailureSummary,
+        RepositoryRef,
+        WorkflowRef,
+        WorkflowRunFailureEvent,
     )
+    
+    mock_context_provider = AsyncMock(spec=GitHubContextProvider)
+    mock_context_provider.fetch_failure_context.return_value = FailureContext(
+        event=WorkflowRunFailureEvent(
+            installation_id=12345,
+            repository=RepositoryRef(owner="test-org", name="test-repo"),
+            workflow=WorkflowRef(
+                run_id="67890",
+                job_id="12345",
+                workflow_name="CI",
+                job_name="build",
+                run_url="https://github.com/test-org/test-repo/actions/runs/67890",
+            ),
+            failure=FailureSummary(
+                conclusion="failure",
+                logs_snippet="Error",
+            ),
+        ),
+        repository_full_name="test-org/test-repo",
+        head_commit_sha="abc123",
+        branch_ref="refs/heads/main",
+        job_html_url="https://github.com/test-org/test-repo/actions/runs/67890/job/12345",
+        logs_excerpt="Error",
+        workflow_file_path=".github/workflows/ci.yml",
+        recent_commits=["abc123"],
+    )
+    
+    monkeypatch.setenv("TRIAGE_GITHUB_WEBHOOK_SECRET", "test-secret")
+    
+    # Create app after mocks are set up
+    app = create_app()
+    app.state.triage_service._context_provider = mock_context_provider
+    
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
+        response = await client.post(
+            "/github/webhook",
+            headers={
+                "X-GitHub-Event": "workflow_job",
+                "X-Hub-Signature-256": compute_signature(payload),
+            },
+            content=payload,
+        )
+    
     assert response.status_code == 202
     assert "Background triage processing started" in caplog.text
+    assert len(celery_calls) == 1
 
 
 @pytest.mark.asyncio

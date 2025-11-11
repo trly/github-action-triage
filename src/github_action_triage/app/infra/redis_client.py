@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import redis
 from redis import ConnectionPool, Redis
@@ -8,7 +7,7 @@ from github_action_triage.agent.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_redis_client: Optional[Redis] = None
+_redis_client: Redis | None = None
 
 
 def get_redis_client() -> Redis:

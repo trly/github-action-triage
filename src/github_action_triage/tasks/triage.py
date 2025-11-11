@@ -22,7 +22,7 @@ class TriageTask(Task):
     time_limit = 630
     soft_time_limit = 600
 
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
+    def on_failure(self, exc, task_id, args, kwargs, einfo):  # noqa: ARG002
         delivery_id = kwargs.get("github_delivery_id", "unknown")
         context_dict = kwargs.get("context", {})
         repo = context_dict.get("repository_full_name", "unknown")
@@ -49,7 +49,8 @@ def analyze_workflow_failure(
         ttl_seconds = 86400
         if not set_if_not_exists(dedupe_key, task_id, ttl_seconds):
             logger.info(
-                f"Skipping duplicate delivery: task_id={task_id}, delivery_id={delivery_id}, repo={repo}"
+                f"Skipping duplicate delivery: task_id={task_id}, "
+                f"delivery_id={delivery_id}, repo={repo}"
             )
             return {"status": "skipped", "reason": "duplicate_delivery"}
 
@@ -61,21 +62,23 @@ def analyze_workflow_failure(
         proposal = asyncio.run(agent.diagnose_and_propose(failure_context))
 
         logger.info(
-            f"Triage analysis completed: task_id={task_id}, delivery_id={delivery_id}, repo={repo}, "
-            f"issue_title={proposal.issue_title}"
+            f"Triage analysis completed: task_id={task_id}, "
+            f"delivery_id={delivery_id}, repo={repo}, issue_title={proposal.issue_title}"
         )
 
         return proposal.model_dump()
 
     except (SoftTimeLimitExceeded, TimeoutError) as e:
         logger.warning(
-            f"Triage analysis timed out: task_id={task_id}, delivery_id={delivery_id}, repo={repo}: {e}"
+            f"Triage analysis timed out: task_id={task_id}, "
+            f"delivery_id={delivery_id}, repo={repo}: {e}"
         )
         raise
 
     except Exception as e:
         logger.error(
-            f"Triage analysis failed: task_id={task_id}, delivery_id={delivery_id}, repo={repo}: {e}",
+            f"Triage analysis failed: task_id={task_id}, "
+            f"delivery_id={delivery_id}, repo={repo}: {e}",
             exc_info=True,
         )
         raise

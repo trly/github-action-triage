@@ -355,6 +355,8 @@ Configuration uses `TRIAGE_` prefix:
 - `TRIAGE_SOURCEGRAPH_TOKEN`: Sourcegraph access token for MCP integration
 - `TRIAGE_SOURCEGRAPH_MCP_URL`: Sourcegraph MCP server URL
 - `TRIAGE_REDIS_URL`: Redis URL for Celery broker and result backend (default: redis://localhost:6379/0)
+- `TRIAGE_DISABLE_ISSUE_CREATION`: Set to "true" to disable GitHub issue creation (logs proposals instead). Useful for local testing without creating real issues
+- `TRIAGE_LOG_LEVEL`: Set to "DEBUG" to enable detailed agent conversation logging (default: INFO)
 
 ## Current Implementation Status
 

@@ -1,4 +1,4 @@
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,6 +40,7 @@ class WorkflowRunFailureEvent(BaseModel):
 
 class FailureContext(BaseModel):
     event: WorkflowRunFailureEvent
+    job_id: int | str = Field(..., description="GitHub job ID for API access")
     repository_full_name: str = Field(..., description="Full repository name (owner/repo)")
     head_commit_sha: str = Field(..., description="Commit SHA of the failed run")
     branch_ref: str = Field(..., description="Branch reference (e.g., refs/heads/main)")
@@ -64,6 +65,14 @@ class RemediationProposal(BaseModel):
         ..., description="Estimated effort to fix: small (< 1hr), medium (1-4hrs), large (> 4hrs)"
     )
     remediation_plan: str = Field(..., description="Step-by-step plan for fixing the issue")
+    job_metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Job metadata from get_job(): head_sha, head_branch, status, conclusion, steps, html_url",
+    )
+    involved_files: list[str] = Field(
+        default_factory=list,
+        description="File paths discovered during analysis (from sg_read_file, sg_list_files, etc.)",
+    )
 
 
 class GitHubContextProvider(Protocol):

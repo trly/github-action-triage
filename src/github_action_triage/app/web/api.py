@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 @router.post("/webhook", status_code=status.HTTP_202_ACCEPTED)
 async def handle_webhook(request: Request) -> JSONResponse:
     event_name = request.headers.get("X-GitHub-Event")
+    delivery_id = request.headers.get("X-GitHub-Delivery")
+    
+    logger.debug(
+        f"Received GitHub webhook: event={event_name}, delivery_id={delivery_id}"
+    )
+    
     if not event_name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

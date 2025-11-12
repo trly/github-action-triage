@@ -63,6 +63,7 @@ def test_failure_context_captures_enriched_metadata():
 
     context = FailureContext(
         event=event,
+        job_id=456,
         repository_full_name="test-org/test-repo",
         head_commit_sha="abc123def456",
         branch_ref="refs/heads/main",

@@ -40,7 +40,7 @@ def test_create_sourcegraph_mcp_server_with_valid_token(settings_with_token):
     assert MCP_SOURCEGRAPH_SERVER_NAME in result
 
     server_config = result[MCP_SOURCEGRAPH_SERVER_NAME]
-    assert server_config["type"] == "sse"
+    assert server_config["type"] == "http"
     assert server_config["url"] == "https://sourcegraph.example.com/.api/mcp/v1"
     assert server_config["headers"]["Authorization"] == "token test-token-123"
 

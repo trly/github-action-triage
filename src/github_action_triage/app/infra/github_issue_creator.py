@@ -1,12 +1,16 @@
+import logging
+
 from githubkit import GitHub
 from githubkit.auth import AppAuthStrategy
 
 from github_action_triage.agent.ports import (
-    FailureContext,
     IssueCreator,
     RemediationProposal,
+    WorkflowRunFailureEvent,
 )
 from github_action_triage.app.config.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class GitHubIssueCreatorAdapter(IssueCreator):
@@ -20,16 +24,27 @@ class GitHubIssueCreatorAdapter(IssueCreator):
         )
 
     async def create_issue_for_proposal(
-        self, context: FailureContext, proposal: RemediationProposal
+        self, event: WorkflowRunFailureEvent, proposal: RemediationProposal
     ) -> str:
-        event = context.event
+        body = self._format_issue_body(event, proposal)
+        
+        # Check if issue creation is disabled (for testing)
+        if self._settings.disable_issue_creation:
+            logger.info(
+                f"Issue creation disabled (TRIAGE_DISABLE_ISSUE_CREATION=true), "
+                f"would have created issue:\n"
+                f"Repository: {event.repository.owner}/{event.repository.name}\n"
+                f"Title: {proposal.issue_title}\n"
+                f"Labels: triage, ci"
+            )
+            logger.debug(f"Issue body:\n{body}")
+            return f"https://github.com/{event.repository.owner}/{event.repository.name}/issues/0"
+        
         response = await self._client.rest.apps.async_create_installation_access_token(
             installation_id=event.installation_id
         )
         token_response = response
         installation_client = GitHub(token_response.parsed_data.token)
-
-        body = self._format_issue_body(context, proposal)
 
         response = await installation_client.rest.issues.async_create(
             owner=event.repository.owner,
@@ -41,8 +56,7 @@ class GitHubIssueCreatorAdapter(IssueCreator):
 
         return response.parsed_data.html_url
 
-    def _format_issue_body(self, context: FailureContext, proposal: RemediationProposal) -> str:
-        event = context.event
+    def _format_issue_body(self, event: WorkflowRunFailureEvent, proposal: RemediationProposal) -> str:
         return f"""## Workflow Failure Detected
 
 **Workflow**: {event.workflow.workflow_name}

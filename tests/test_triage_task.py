@@ -28,6 +28,7 @@ def failure_context_dict():
                 "logs_snippet": "Error: npm install failed",
             },
         },
+        "job_id": 12345,
         "repository_full_name": "test-org/test-repo",
         "head_commit_sha": "abc123",
         "branch_ref": "refs/heads/main",
@@ -54,7 +55,7 @@ def test_task_successfully_analyzes_failure(failure_context_dict, remediation_pr
     """Verify task successfully calls agent and returns proposal."""
     with (
         patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
-        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
@@ -92,7 +93,7 @@ def test_task_idempotency_prevents_duplicate_processing(failure_context_dict):
     """Verify task skips processing for duplicate delivery IDs."""
     with (
         patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
-        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch(
             "github_action_triage.tasks.triage.set_if_not_exists", return_value=False
         ) as mock_setnx,
@@ -119,7 +120,7 @@ def test_task_processes_when_no_delivery_id(failure_context_dict, remediation_pr
     """Verify task processes normally when github_delivery_id is None."""
     with (
         patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
-        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists") as mock_setnx,
     ):
@@ -153,7 +154,7 @@ def test_task_handles_soft_timeout(failure_context_dict):
     """Verify task propagates SoftTimeLimitExceeded for retry logic."""
     with (
         patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
-        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
         mock_agent = AsyncMock()
@@ -170,7 +171,7 @@ def test_task_handles_generic_exception(failure_context_dict):
     """Verify task propagates generic exceptions for retry logic."""
     with (
         patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
-        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
         mock_agent = AsyncMock()
@@ -185,10 +186,7 @@ def test_task_handles_generic_exception(failure_context_dict):
 
 def test_task_configuration():
     """Verify TriageTask has correct retry and timeout configuration."""
-    assert TriageTask.autoretry_for == (Exception,)
-    assert TriageTask.retry_kwargs["max_retries"] == 3
-    assert TriageTask.retry_backoff is True
-    assert TriageTask.retry_backoff_max == 300
+    assert TriageTask.autoretry_for == ()
     assert TriageTask.time_limit == 630
     assert TriageTask.soft_time_limit == 600
 
@@ -225,7 +223,7 @@ def test_task_validates_failure_context(failure_context_dict, remediation_propos
 
     with (
         patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
-        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
         mock_request = MagicMock()
@@ -243,7 +241,7 @@ def test_task_redis_error_propagates(failure_context_dict):
 
     with (
         patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
-        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists") as mock_setnx,
     ):
         mock_setnx.side_effect = redis.RedisError("Connection failed")

@@ -63,6 +63,7 @@ def failure_event():
 def failure_context(failure_event):
     return FailureContext(
         event=failure_event,
+        job_id=12345,
         repository_full_name="test-org/test-repo",
         head_commit_sha="abc123",
         branch_ref="refs/heads/main",

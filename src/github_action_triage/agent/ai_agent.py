@@ -3,7 +3,16 @@ import logging
 from typing import Any
 
 from claude_agent_sdk import ClaudeSDKClient, create_sdk_mcp_server, tool
-from claude_agent_sdk.types import AssistantMessage, ClaudeAgentOptions, ResultMessage, TextBlock
+from claude_agent_sdk.types import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    Message,
+    ResultMessage,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+)
 
 from github_action_triage.agent.config import Settings
 from github_action_triage.agent.mcp import (
@@ -30,21 +39,26 @@ You will receive a FailureContext containing:
 - Failure logs excerpt demonstrating the error condition
 - Workflow file path (if available)
 - Recent commit history"""
-
 SYSTEM_PROMPT_MCP_TOOLS = """
 
 ## Remote Repository Access
 
-**All repository code inspection must happen through the Sourcegraph MCP server.** You do not have local access to any files in the repository. Do not assume you can read files directly or that the repository is checked out on your filesystem.
+**CRITICAL: All repository code inspection MUST happen through the Sourcegraph MCP server.** You do not have local access to any files in the repository. Do not assume you can read files directly or that the repository is checked out on your filesystem.
 
-You have access to a Sourcegraph MCP server (OAuth-authenticated) providing:
-- Code search (keyword and semantic search across repositories)
-- File reading (sg_read_file) — the ONLY way to read repository files
-- Directory listing (sg_list_files) — the ONLY way to list repository contents
-- Symbol navigation (sg_find_references, sg_go_to_definition)
-- Commit and diff search
+**You MUST use the following Sourcegraph MCP tools for all code investigation:**
 
-Use these MCP tools exclusively to investigate the codebase, examine workflow configurations, and analyze recent changes that may have introduced the failure."""
+- **sg_read_file** — Read file contents (the ONLY way to read repository files)
+- **sg_list_files** — List directory contents (the ONLY way to browse the repository)
+- **sg_list_repos** — Verify repository names and access
+- **sg_keyword_search** — Search for exact code patterns, function names, and keywords
+- **sg_nls_search** — Semantic search for concepts and related code
+- **sg_go_to_definition** — Navigate to symbol definitions
+- **sg_find_references** — Find where symbols are used
+- **sg_commit_search** — Search commit history and messages
+- **sg_diff_search** — Search code changes in diffs
+- **sg_compare_revisions** — Compare code between commits
+
+**IMPORTANT:** Start your investigation by using sg_list_repos to verify the repository name, then use sg_keyword_search or sg_nls_search to find relevant code, workflow files, and configuration. Use sg_read_file to examine specific files. These tools are OAuth-authenticated and provide full access to the codebase."""
 
 SYSTEM_PROMPT_WORKFLOW = """
 
@@ -53,11 +67,11 @@ SYSTEM_PROMPT_WORKFLOW = """
 1. Examine the logs_excerpt to identify the immediate failure symptom
 2. Use available tools to investigate root cause (workflow YAML, recent commits, dependency files, code changes)
 3. Form a hypothesis about the underlying issue
-4. Once you have high confidence in your diagnosis, submit your remediation proposal
+4. REQUIRED: Submit your remediation proposal using the submit_proposal tool
 
 ## Remediation Proposal Requirements
 
-When confident in your analysis, invoke the submit_proposal tool with four parameters:
+You MUST invoke the submit_proposal tool with four parameters to complete the analysis:
 
 - **issue_title**: Short, actionable title for GitHub issue (< 80 characters). Example: "Ruff linting errors in source files"
 - **identified_issue**: Precise description of the root cause (not just the symptom)
@@ -181,6 +195,10 @@ class ActionTriageAgent(RemediationAgent):
             f"(run_id={context.event.workflow.run_id}, model={self._settings.claude_model}, "
             f"MCP={'enabled' if has_sourcegraph else 'disabled'})"
         )
+        
+        # Log system prompt and initial user prompt at DEBUG level
+        logger.debug(f"System prompt:\n{system_prompt}")
+        logger.debug(f"Initial user prompt:\n{initial_prompt}")
 
         # Run message loop with proper error handling
         final_result: ResultMessage | None = None
@@ -190,12 +208,49 @@ class ActionTriageAgent(RemediationAgent):
 
             async def iterate_messages():
                 nonlocal final_result
+                turn_counter = 0
                 async for message in client.receive_response():
                     # Log assistant messages for debugging
                     if isinstance(message, AssistantMessage):
+                        turn_counter += 1
+                        logger.debug(f"[Turn {turn_counter}] Assistant message received")
+                        
                         for block in message.content:
                             if isinstance(block, TextBlock):
-                                logger.debug(f"Claude: {block.text[:500]}")
+                                # Log full text at DEBUG level for local debugging
+                                logger.debug(f"[Turn {turn_counter}] Text: {block.text}")
+                            elif isinstance(block, ToolUseBlock):
+                                # Log tool calls to see what the agent is doing
+                                tool_name = block.name
+                                tool_input = getattr(block, "input", {})
+                                
+                                # Highlight MCP calls specifically
+                                if tool_name.startswith("mcp__"):
+                                    logger.debug(
+                                        f"[Turn {turn_counter}] 🔧 MCP TOOL CALL: {tool_name}\n"
+                                        f"  Args: {tool_input}"
+                                    )
+                                else:
+                                    logger.debug(
+                                        f"[Turn {turn_counter}] Tool call: {tool_name} "
+                                        f"with args: {tool_input}"
+                                    )
+
+                    # Log user messages (tool results)
+                    elif isinstance(message, UserMessage):
+                        logger.debug(f"[Turn {turn_counter}] User message (tool results)")
+                        for block in message.content:
+                            if isinstance(block, ToolResultBlock):
+                                tool_use_id = block.tool_use_id
+                                result_content = block.content
+                                # Truncate large results for readability
+                                if isinstance(result_content, str) and len(result_content) > 500:
+                                    result_preview = result_content[:500] + "...[truncated]"
+                                else:
+                                    result_preview = result_content
+                                logger.debug(
+                                    f"[Turn {turn_counter}] Tool result for {tool_use_id}: {result_preview}"
+                                )
 
                     # Check for final result message
                     elif isinstance(message, ResultMessage):
@@ -205,6 +260,10 @@ class ActionTriageAgent(RemediationAgent):
                             f"duration_ms={message.duration_ms}, error={message.is_error}"
                         )
                         break
+                    
+                    # Log any other message types we might be missing
+                    else:
+                        logger.debug(f"[Turn {turn_counter}] Other message type: {type(message).__name__}")
 
             try:
                 await asyncio.wait_for(

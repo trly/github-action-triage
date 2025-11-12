@@ -78,6 +78,7 @@ class GitHubContextAdapter(GitHubContextProvider):
 
         return FailureContext(
             event=event,
+            job_id=event.workflow.job_id,
             repository_full_name=f"{event.repository.owner}/{event.repository.name}",
             head_commit_sha=job_data.head_sha,
             branch_ref=f"refs/heads/{job_data.head_branch}",

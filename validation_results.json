@@ -1,0 +1,20 @@
+[
+  {
+    "name": "npm install failure - missing package-lock.json",
+    "success": false,
+    "execution_time": 4.147685289382935,
+    "error": "'NoneType' object has no attribute 'rest'"
+  },
+  {
+    "name": "Python linting errors - ruff violations",
+    "success": false,
+    "execution_time": 3.5205960273742676,
+    "error": "'NoneType' object has no attribute 'rest'"
+  },
+  {
+    "name": "Test failures - pytest assertion errors",
+    "success": false,
+    "execution_time": 4.072283029556274,
+    "error": "'NoneType' object has no attribute 'rest'"
+  }
+]

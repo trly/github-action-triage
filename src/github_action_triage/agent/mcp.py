@@ -26,11 +26,14 @@ def create_sourcegraph_mcp_server(
 
     try:
         server_config: McpServerConfig = {
-            "type": "sse",
+            "type": "http",
             "url": settings.sourcegraph_mcp_url,
             "headers": {"Authorization": f"token {settings.sourcegraph_token.get_secret_value()}"},
         }
 
+        logger.info(
+            f"Created Sourcegraph MCP server config: url={settings.sourcegraph_mcp_url}"
+        )
         return {MCP_SOURCEGRAPH_SERVER_NAME: server_config}
     except Exception as e:
         logger.warning(f"Failed to create Sourcegraph MCP server: {e}", exc_info=True)

@@ -1,0 +1,32 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Development and testing
+.pytest_cache/
+.ruff_cache/
+tests/
+
+# Version control
+.git/
+.github/
+.jj/
+
+# Local development
+.beads/
+history/
+.envrc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -29,6 +29,12 @@ src/github_action_triage/
 │   ├── celery_app.py        # Celery application configuration
 │   └── factory.py           # FastAPI application factory
 ├── agent/                   # Agent layer
+│   ├── analysis/            # Analysis agent implementation
+│   │   ├── agent.py         # Core analysis agent
+│   │   ├── config.py        # Analysis agent configuration
+│   │   └── tools/           # Agent tool integrations
+│   │       ├── github.py    # GitHub API tools
+│   │       └── sourcegraph.py # Sourcegraph code search tools
 │   ├── ports.py             # Protocol definitions for external services
 │   ├── ai_agent.py          # Claude Agent SDK remediation agent
 │   ├── config.py            # Agent configuration
@@ -122,12 +128,14 @@ export TRIAGE_ANTHROPIC_API_KEY="sk-ant-..."
 export TRIAGE_SOURCEGRAPH_TOKEN="sgp_..."
 export TRIAGE_SOURCEGRAPH_MCP_URL="http://localhost:3000"
 export TRIAGE_LOG_LEVEL="INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+export TRIAGE_DISABLE_ISSUE_CREATION="false"  # Set to "true" for testing without creating issues
 ```
 
 **Notes**:
 
 - `TRIAGE_GITHUB_PRIVATE_KEY` should contain the full PEM content (including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` lines), not just a file path.
 - `TRIAGE_GITHUB_WEBHOOK_SECRET` should be a secure random string. Generate one with:
+- `TRIAGE_DISABLE_ISSUE_CREATION` when set to `"true"`, disables GitHub issue creation and instead logs the proposal. Useful for local testing and development to avoid cluttering repositories with test issues.
 
   ```bash
   # Generate a secure random secret

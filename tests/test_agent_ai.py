@@ -35,6 +35,7 @@ def failure_context():
     )
     return FailureContext(
         event=event,
+        job_id=456,
         repository_full_name="test-org/test-repo",
         head_commit_sha="abc123",
         branch_ref="refs/heads/main",
@@ -729,12 +730,12 @@ async def test_system_prompt_emphasizes_sourcegraph_mcp_when_enabled(settings, f
         # Should contain base warning
         assert "do not have a local checkout" in system_prompt.lower()
 
-        # Should contain MCP-specific emphasis
+        # Should contain MCP-specific emphasis with stronger directive language
         assert "Remote Repository Access" in system_prompt
         assert (
-            "All repository code inspection must happen through the Sourcegraph MCP server"
+            "CRITICAL: All repository code inspection MUST happen through the Sourcegraph MCP server"
             in system_prompt
         )
         assert "the ONLY way to read repository files" in system_prompt
-        assert "the ONLY way to list repository contents" in system_prompt
-        assert "Use these MCP tools exclusively" in system_prompt
+        assert "the ONLY way to browse the repository" in system_prompt
+        assert "You MUST use the following Sourcegraph MCP tools" in system_prompt

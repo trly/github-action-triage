@@ -9,6 +9,7 @@ from github_action_triage.agent.ai_agent import ActionTriageAgent
 from github_action_triage.agent.config import get_settings
 from github_action_triage.agent.ports import FailureContext
 from github_action_triage.app.celery_app import app
+from github_action_triage.app.infra.github_issue_creator import GitHubIssueCreatorAdapter
 from github_action_triage.app.infra.redis_client import set_if_not_exists
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,17 @@ def analyze_workflow_failure(
             f"delivery_id={delivery_id}, repo={repo}, issue_title={proposal.issue_title}"
         )
 
-        return proposal.model_dump()
+        issue_creator = GitHubIssueCreatorAdapter(settings)
+        issue_url = asyncio.run(
+            issue_creator.create_issue_for_proposal(failure_context, proposal)
+        )
+
+        logger.info(
+            f"GitHub issue created: task_id={task_id}, "
+            f"delivery_id={delivery_id}, repo={repo}, issue_url={issue_url}"
+        )
+
+        return {**proposal.model_dump(), "issue_url": issue_url}
 
     except (SoftTimeLimitExceeded, TimeoutError) as e:
         logger.warning(

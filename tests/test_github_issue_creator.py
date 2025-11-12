@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from github_action_triage.agent.ports import (
+    FailureContext,
     FailureSummary,
     RemediationProposal,
     RepositoryRef,
@@ -43,6 +44,18 @@ def failure_event():
 
 
 @pytest.fixture
+def failure_context(failure_event):
+    return FailureContext(
+        event=failure_event,
+        repository_full_name="test-owner/test-repo",
+        head_commit_sha="abc123",
+        branch_ref="refs/heads/main",
+        job_html_url="https://github.com/test-owner/test-repo/actions/runs/9876/job/5432",
+        logs_excerpt="AssertionError: expected 5, got 3",
+    )
+
+
+@pytest.fixture
 def remediation_proposal():
     return RemediationProposal(
         issue_title="Test failure in authentication module",
@@ -54,7 +67,7 @@ def remediation_proposal():
 
 @pytest.mark.asyncio
 async def test_create_issue_formats_body_correctly(
-    settings, failure_event, remediation_proposal, monkeypatch
+    settings, failure_context, remediation_proposal, monkeypatch
 ):
     # Arrange
     mock_app_client = MagicMock()
@@ -88,7 +101,7 @@ async def test_create_issue_formats_body_correctly(
     creator = GitHubIssueCreatorAdapter(settings=settings)
 
     # Act
-    issue_url = await creator.create_issue_for_proposal(failure_event, remediation_proposal)
+    issue_url = await creator.create_issue_for_proposal(failure_context, remediation_proposal)
 
     # Assert
     assert issue_url == "https://github.com/test-owner/test-repo/issues/42"
@@ -167,11 +180,19 @@ async def test_create_issue_uses_correct_repository(
             logs_snippet="Error occurred",
         ),
     )
+    different_context = FailureContext(
+        event=different_event,
+        repository_full_name="different-org/different-repo",
+        head_commit_sha="xyz789",
+        branch_ref="refs/heads/main",
+        job_html_url="https://github.com/different-org/different-repo/actions/runs/111/job/222",
+        logs_excerpt="Error occurred",
+    )
 
     creator = GitHubIssueCreatorAdapter(settings=settings)
 
     # Act
-    await creator.create_issue_for_proposal(different_event, remediation_proposal)
+    await creator.create_issue_for_proposal(different_context, remediation_proposal)
 
     # Assert
     call_kwargs = mock_installation_client.rest.issues.async_create.call_args.kwargs
@@ -186,7 +207,7 @@ async def test_create_issue_uses_correct_repository(
 
 @pytest.mark.asyncio
 async def test_create_issue_handles_api_failure(
-    settings, failure_event, remediation_proposal, monkeypatch
+    settings, failure_context, remediation_proposal, monkeypatch
 ):
     # Arrange
     mock_app_client = MagicMock()
@@ -217,12 +238,12 @@ async def test_create_issue_handles_api_failure(
 
     # Act & Assert
     with pytest.raises(Exception, match="GitHub API error: rate limit exceeded"):
-        await creator.create_issue_for_proposal(failure_event, remediation_proposal)
+        await creator.create_issue_for_proposal(failure_context, remediation_proposal)
 
 
 @pytest.mark.asyncio
 async def test_create_issue_handles_installation_token_failure(
-    settings, failure_event, remediation_proposal, monkeypatch
+    settings, failure_context, remediation_proposal, monkeypatch
 ):
     # Arrange
     mock_app_client = MagicMock()
@@ -239,12 +260,12 @@ async def test_create_issue_handles_installation_token_failure(
 
     # Act & Assert
     with pytest.raises(Exception, match="Installation not found"):
-        await creator.create_issue_for_proposal(failure_event, remediation_proposal)
+        await creator.create_issue_for_proposal(failure_context, remediation_proposal)
 
 
 @pytest.mark.asyncio
 async def test_format_issue_body_includes_all_required_sections(
-    settings, failure_event, remediation_proposal, monkeypatch
+    settings, failure_context, remediation_proposal, monkeypatch
 ):
     # Arrange
     mock_app_client = MagicMock()
@@ -281,7 +302,7 @@ async def test_format_issue_body_includes_all_required_sections(
     creator = GitHubIssueCreatorAdapter(settings=settings)
 
     # Act
-    await creator.create_issue_for_proposal(failure_event, large_effort_proposal)
+    await creator.create_issue_for_proposal(failure_context, large_effort_proposal)
 
     # Assert
     call_kwargs = mock_installation_client.rest.issues.async_create.call_args.kwargs

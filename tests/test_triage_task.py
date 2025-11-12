@@ -53,11 +53,16 @@ def test_task_successfully_analyzes_failure(failure_context_dict, remediation_pr
     """Verify task successfully calls agent and returns proposal."""
     with patch("github_action_triage.tasks.triage.get_settings") as mock_settings, \
          patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class, \
+         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class, \
          patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True):
         
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.return_value = remediation_proposal
         mock_agent_class.return_value = mock_agent
+        
+        mock_creator = AsyncMock()
+        mock_creator.create_issue_for_proposal.return_value = "https://github.com/test-org/test-repo/issues/1"
+        mock_creator_class.return_value = mock_creator
         
         # Call task.run() to bypass Celery infrastructure
         result = analyze_workflow_failure.run(
@@ -68,12 +73,16 @@ def test_task_successfully_analyzes_failure(failure_context_dict, remediation_pr
         assert result["issue_title"] == "npm install failed"
         assert result["identified_issue"] == "npm install failed due to missing package-lock.json"
         assert result["fix_effort"] == "small"
+        assert result["issue_url"] == "https://github.com/test-org/test-repo/issues/1"
         
         # Verify agent was called with correct context
         mock_agent.diagnose_and_propose.assert_called_once()
         call_args = mock_agent.diagnose_and_propose.call_args[0][0]
         assert isinstance(call_args, FailureContext)
         assert call_args.repository_full_name == "test-org/test-repo"
+        
+        # Verify issue creator was called
+        mock_creator.create_issue_for_proposal.assert_called_once()
 
 
 def test_task_idempotency_prevents_duplicate_processing(failure_context_dict):
@@ -105,11 +114,16 @@ def test_task_processes_when_no_delivery_id(failure_context_dict, remediation_pr
     """Verify task processes normally when github_delivery_id is None."""
     with patch("github_action_triage.tasks.triage.get_settings") as mock_settings, \
          patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class, \
+         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class, \
          patch("github_action_triage.tasks.triage.set_if_not_exists") as mock_setnx:
         
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.return_value = remediation_proposal
         mock_agent_class.return_value = mock_agent
+        
+        mock_creator = AsyncMock()
+        mock_creator.create_issue_for_proposal.return_value = "https://github.com/test-org/test-repo/issues/1"
+        mock_creator_class.return_value = mock_creator
         
         result = analyze_workflow_failure.run(
             context=failure_context_dict,
@@ -118,12 +132,16 @@ def test_task_processes_when_no_delivery_id(failure_context_dict, remediation_pr
         
         # Verify task completed successfully
         assert result["issue_title"] == "npm install failed"
+        assert result["issue_url"] == "https://github.com/test-org/test-repo/issues/1"
         
         # Verify Redis was NOT checked (no delivery ID)
         mock_setnx.assert_not_called()
         
         # Verify agent was called
         mock_agent.diagnose_and_propose.assert_called_once()
+        
+        # Verify issue creator was called
+        mock_creator.create_issue_for_proposal.assert_called_once()
 
 
 def test_task_handles_soft_timeout(failure_context_dict):

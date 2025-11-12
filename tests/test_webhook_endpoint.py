@@ -111,13 +111,15 @@ async def test_logs_failure_workflow_job(caplog, monkeypatch):
 
     # Mock Celery task to avoid real task enqueueing
     from unittest.mock import AsyncMock
-    
+
     class MockCeleryTask:
         id = "test-task-id"
+
         def delay(self, **kwargs):  # noqa: ARG002
             return self
-    
+
     import github_action_triage.app.web.api as api_module
+
     monkeypatch.setattr(api_module, "analyze_workflow_failure", MockCeleryTask())
 
     # Mock context provider to avoid GitHub API calls
@@ -128,7 +130,7 @@ async def test_logs_failure_workflow_job(caplog, monkeypatch):
         WorkflowRef,
         WorkflowRunFailureEvent,
     )
-    
+
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_context_provider.fetch_failure_context.return_value = FailureContext(
         event=WorkflowRunFailureEvent(
@@ -154,16 +156,18 @@ async def test_logs_failure_workflow_job(caplog, monkeypatch):
         workflow_file_path=".github/workflows/ci.yml",
         recent_commits=["abc123"],
     )
-    
+
     monkeypatch.setenv("TRIAGE_GITHUB_WEBHOOK_SECRET", "test-secret")
-    
+
     # Create app after mocks are set up
     app = create_app()
     app.state.triage_service._context_provider = mock_context_provider
-    
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
+        payload = json.dumps(
+            workflow_job_payload(action="completed", conclusion="failure")
+        ).encode()
         response = await client.post(
             "/github/webhook",
             headers={
@@ -172,7 +176,7 @@ async def test_logs_failure_workflow_job(caplog, monkeypatch):
             },
             content=payload,
         )
-    
+
     assert response.status_code == 202
     assert "workflow_job.completed.failure" in caplog.text
 
@@ -184,17 +188,19 @@ async def test_invokes_failure_handler_for_job_failure(caplog, monkeypatch):
     # Mock Celery task to verify it's called
     import logging
     from unittest.mock import AsyncMock
-    
+
     celery_calls = []
-    
+
     class MockCeleryTask:
         id = "test-task-id"
+
         def delay(self, **kwargs):
             celery_calls.append(kwargs)
             logging.getLogger(__name__).info("Background triage processing started")
             return self
-    
+
     import github_action_triage.app.web.api as api_module
+
     monkeypatch.setattr(api_module, "analyze_workflow_failure", MockCeleryTask())
 
     # Mock context provider to avoid GitHub API calls
@@ -205,7 +211,7 @@ async def test_invokes_failure_handler_for_job_failure(caplog, monkeypatch):
         WorkflowRef,
         WorkflowRunFailureEvent,
     )
-    
+
     mock_context_provider = AsyncMock(spec=GitHubContextProvider)
     mock_context_provider.fetch_failure_context.return_value = FailureContext(
         event=WorkflowRunFailureEvent(
@@ -231,16 +237,18 @@ async def test_invokes_failure_handler_for_job_failure(caplog, monkeypatch):
         workflow_file_path=".github/workflows/ci.yml",
         recent_commits=["abc123"],
     )
-    
+
     monkeypatch.setenv("TRIAGE_GITHUB_WEBHOOK_SECRET", "test-secret")
-    
+
     # Create app after mocks are set up
     app = create_app()
     app.state.triage_service._context_provider = mock_context_provider
-    
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        payload = json.dumps(workflow_job_payload(action="completed", conclusion="failure")).encode()
+        payload = json.dumps(
+            workflow_job_payload(action="completed", conclusion="failure")
+        ).encode()
         response = await client.post(
             "/github/webhook",
             headers={
@@ -249,7 +257,7 @@ async def test_invokes_failure_handler_for_job_failure(caplog, monkeypatch):
             },
             content=payload,
         )
-    
+
     assert response.status_code == 202
     assert "Background triage processing started" in caplog.text
     assert len(celery_calls) == 1

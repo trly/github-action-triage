@@ -49,27 +49,27 @@ async def handle_webhook(request: Request) -> JSONResponse:
         log_workflow_job_failure(event)
         triage_event = map_workflow_job_event(event)
         service = request.app.state.triage_service
-        
+
         # Extract GitHub delivery ID for idempotency
         github_delivery_id = request.headers.get("X-GitHub-Delivery")
         if not github_delivery_id:
             repo = f"{triage_event.repository.owner}/{triage_event.repository.name}"
             logger.warning(f"Missing X-GitHub-Delivery header for {repo}")
-        
+
         # Fetch failure context
         context = await service._context_provider.fetch_failure_context(triage_event)
-        
+
         # Enqueue Celery task
         task = analyze_workflow_failure.delay(
             context=context.model_dump(),
             github_delivery_id=github_delivery_id,
         )
-        
+
         logger.info(
             f"Enqueued triage task: task_id={task.id}, delivery_id={github_delivery_id}, "
             f"repo={context.repository_full_name}"
         )
-        
+
         return JSONResponse(
             status_code=status.HTTP_202_ACCEPTED,
             content={"status": "accepted", "task_id": task.id},

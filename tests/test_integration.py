@@ -171,10 +171,10 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event, fail
 
     # Create test client
     app = create_app()
-    
+
     # Inject mocked context provider into app state
     app.state.triage_service._context_provider = mock_context_provider
-    
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         payload = json.dumps(
@@ -192,7 +192,7 @@ async def test_webhook_triggers_background_task(monkeypatch, failure_event, fail
 
     assert response.status_code == 202
     assert response.json()["task_id"] == "test-task-id-123"
-    
+
     # Verify task was enqueued with correct parameters
     assert len(celery_task_calls) == 1
     task_call = celery_task_calls[0]

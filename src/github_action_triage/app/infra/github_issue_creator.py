@@ -41,9 +41,7 @@ class GitHubIssueCreatorAdapter(IssueCreator):
 
         return response.parsed_data.html_url
 
-    def _format_issue_body(
-        self, context: FailureContext, proposal: RemediationProposal
-    ) -> str:
+    def _format_issue_body(self, context: FailureContext, proposal: RemediationProposal) -> str:
         event = context.event
         return f"""## Workflow Failure Detected
 

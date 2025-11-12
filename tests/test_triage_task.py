@@ -1,4 +1,5 @@
 """Unit tests for Celery triage task."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -51,130 +52,134 @@ def remediation_proposal():
 
 def test_task_successfully_analyzes_failure(failure_context_dict, remediation_proposal):
     """Verify task successfully calls agent and returns proposal."""
-    with patch("github_action_triage.tasks.triage.get_settings") as mock_settings, \
-         patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class, \
-         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class, \
-         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True):
-        
+    with (
+        patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
+        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class,
+        patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
+    ):
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.return_value = remediation_proposal
         mock_agent_class.return_value = mock_agent
-        
+
         mock_creator = AsyncMock()
-        mock_creator.create_issue_for_proposal.return_value = "https://github.com/test-org/test-repo/issues/1"
+        mock_creator.create_issue_for_proposal.return_value = (
+            "https://github.com/test-org/test-repo/issues/1"
+        )
         mock_creator_class.return_value = mock_creator
-        
+
         # Call task.run() to bypass Celery infrastructure
         result = analyze_workflow_failure.run(
-            context=failure_context_dict,
-            github_delivery_id="delivery-456"
+            context=failure_context_dict, github_delivery_id="delivery-456"
         )
-        
+
         assert result["issue_title"] == "npm install failed"
         assert result["identified_issue"] == "npm install failed due to missing package-lock.json"
         assert result["fix_effort"] == "small"
         assert result["issue_url"] == "https://github.com/test-org/test-repo/issues/1"
-        
+
         # Verify agent was called with correct context
         mock_agent.diagnose_and_propose.assert_called_once()
         call_args = mock_agent.diagnose_and_propose.call_args[0][0]
         assert isinstance(call_args, FailureContext)
         assert call_args.repository_full_name == "test-org/test-repo"
-        
+
         # Verify issue creator was called
         mock_creator.create_issue_for_proposal.assert_called_once()
 
 
 def test_task_idempotency_prevents_duplicate_processing(failure_context_dict):
     """Verify task skips processing for duplicate delivery IDs."""
-    with patch("github_action_triage.tasks.triage.get_settings") as mock_settings, \
-         patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class, \
-         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=False) as mock_setnx:
-        
+    with (
+        patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
+        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch(
+            "github_action_triage.tasks.triage.set_if_not_exists", return_value=False
+        ) as mock_setnx,
+    ):
         result = analyze_workflow_failure.run(
-            context=failure_context_dict,
-            github_delivery_id="delivery-456"
+            context=failure_context_dict, github_delivery_id="delivery-456"
         )
-        
+
         # Verify task returned skip status
         assert result["status"] == "skipped"
         assert result["reason"] == "duplicate_delivery"
-        
+
         # Verify Redis was checked with correct key and TTL
         assert mock_setnx.call_count == 1
         call_args = mock_setnx.call_args[0]
         assert call_args[0] == "triage:delivery:delivery-456"
         assert call_args[2] == 86400  # TTL is 24 hours
-        
+
         # Verify agent was NOT called
         mock_agent_class.assert_not_called()
 
 
 def test_task_processes_when_no_delivery_id(failure_context_dict, remediation_proposal):
     """Verify task processes normally when github_delivery_id is None."""
-    with patch("github_action_triage.tasks.triage.get_settings") as mock_settings, \
-         patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class, \
-         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class, \
-         patch("github_action_triage.tasks.triage.set_if_not_exists") as mock_setnx:
-        
+    with (
+        patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
+        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class,
+        patch("github_action_triage.tasks.triage.set_if_not_exists") as mock_setnx,
+    ):
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.return_value = remediation_proposal
         mock_agent_class.return_value = mock_agent
-        
+
         mock_creator = AsyncMock()
-        mock_creator.create_issue_for_proposal.return_value = "https://github.com/test-org/test-repo/issues/1"
-        mock_creator_class.return_value = mock_creator
-        
-        result = analyze_workflow_failure.run(
-            context=failure_context_dict,
-            github_delivery_id=None
+        mock_creator.create_issue_for_proposal.return_value = (
+            "https://github.com/test-org/test-repo/issues/1"
         )
-        
+        mock_creator_class.return_value = mock_creator
+
+        result = analyze_workflow_failure.run(context=failure_context_dict, github_delivery_id=None)
+
         # Verify task completed successfully
         assert result["issue_title"] == "npm install failed"
         assert result["issue_url"] == "https://github.com/test-org/test-repo/issues/1"
-        
+
         # Verify Redis was NOT checked (no delivery ID)
         mock_setnx.assert_not_called()
-        
+
         # Verify agent was called
         mock_agent.diagnose_and_propose.assert_called_once()
-        
+
         # Verify issue creator was called
         mock_creator.create_issue_for_proposal.assert_called_once()
 
 
 def test_task_handles_soft_timeout(failure_context_dict):
     """Verify task propagates SoftTimeLimitExceeded for retry logic."""
-    with patch("github_action_triage.tasks.triage.get_settings") as mock_settings, \
-         patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class, \
-         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True):
-        
+    with (
+        patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
+        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
+    ):
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.side_effect = SoftTimeLimitExceeded()
         mock_agent_class.return_value = mock_agent
-        
+
         with pytest.raises(SoftTimeLimitExceeded):
             analyze_workflow_failure.run(
-                context=failure_context_dict,
-                github_delivery_id="delivery-456"
+                context=failure_context_dict, github_delivery_id="delivery-456"
             )
 
 
 def test_task_handles_generic_exception(failure_context_dict):
     """Verify task propagates generic exceptions for retry logic."""
-    with patch("github_action_triage.tasks.triage.get_settings") as mock_settings, \
-         patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class, \
-         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True):
-        
+    with (
+        patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
+        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
+    ):
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.side_effect = RuntimeError("AI service unavailable")
         mock_agent_class.return_value = mock_agent
-        
+
         with pytest.raises(RuntimeError, match="AI service unavailable"):
             analyze_workflow_failure.run(
-                context=failure_context_dict,
-                github_delivery_id="delivery-456"
+                context=failure_context_dict, github_delivery_id="delivery-456"
             )
 
 
@@ -191,9 +196,9 @@ def test_task_configuration():
 def test_task_on_failure_callback(caplog):
     """Verify on_failure callback logs task failures correctly."""
     import logging
-    
+
     caplog.set_level(logging.ERROR)
-    
+
     task = TriageTask()
     exc = RuntimeError("Test error")
     task_id = "task-123"
@@ -201,12 +206,12 @@ def test_task_on_failure_callback(caplog):
         "github_delivery_id": "delivery-456",
         "context": {"repository_full_name": "test-org/test-repo"},
     }
-    
+
     class FakeEinfo:
         pass
-    
+
     task.on_failure(exc, task_id, [], kwargs, FakeEinfo())
-    
+
     assert "Task task-123 failed" in caplog.text
     assert "delivery_id=delivery-456" in caplog.text
     assert "repo=test-org/test-repo" in caplog.text
@@ -217,34 +222,33 @@ def test_task_validates_failure_context(failure_context_dict, remediation_propos
     # Introduce invalid data (missing required field)
     invalid_context = failure_context_dict.copy()
     del invalid_context["repository_full_name"]
-    
-    with patch("github_action_triage.tasks.triage.get_settings") as mock_settings, \
-         patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class, \
-         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True):
-        
+
+    with (
+        patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
+        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
+    ):
         mock_request = MagicMock()
         mock_request.id = "task-123"
-        
+
         with pytest.raises(Exception):  # noqa: B017
             analyze_workflow_failure(
-                mock_request,
-                context=invalid_context,
-                github_delivery_id="delivery-456"
+                mock_request, context=invalid_context, github_delivery_id="delivery-456"
             )
 
 
 def test_task_redis_error_propagates(failure_context_dict):
     """Verify Redis errors are propagated for retry handling."""
     import redis
-    
-    with patch("github_action_triage.tasks.triage.get_settings") as mock_settings, \
-         patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class, \
-         patch("github_action_triage.tasks.triage.set_if_not_exists") as mock_setnx:
-        
+
+    with (
+        patch("github_action_triage.tasks.triage.get_settings") as mock_settings,
+        patch("github_action_triage.tasks.triage.ActionTriageAgent") as mock_agent_class,
+        patch("github_action_triage.tasks.triage.set_if_not_exists") as mock_setnx,
+    ):
         mock_setnx.side_effect = redis.RedisError("Connection failed")
-        
+
         with pytest.raises(redis.RedisError, match="Connection failed"):
             analyze_workflow_failure.run(
-                context=failure_context_dict,
-                github_delivery_id="delivery-456"
+                context=failure_context_dict, github_delivery_id="delivery-456"
             )

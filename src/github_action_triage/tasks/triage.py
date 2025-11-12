@@ -68,9 +68,7 @@ def analyze_workflow_failure(
         )
 
         issue_creator = GitHubIssueCreatorAdapter(settings)
-        issue_url = asyncio.run(
-            issue_creator.create_issue_for_proposal(failure_context, proposal)
-        )
+        issue_url = asyncio.run(issue_creator.create_issue_for_proposal(failure_context, proposal))
 
         logger.info(
             f"GitHub issue created: task_id={task_id}, "

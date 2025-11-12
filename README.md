@@ -23,27 +23,36 @@ src/github_action_triage/
 │   ├── infra/               # Infrastructure adapters
 │   │   ├── github_client.py # GitHub API integration
 │   │   └── github_issue_creator.py # GitHub issue creation
+│   ├── llm/                 # LLM integrations
+│   │   └── mcp.py           # MCP client configuration
 │   ├── api.py               # Core triage service orchestration
+│   ├── celery_app.py        # Celery application configuration
 │   └── factory.py           # FastAPI application factory
-└── agent/                   # Agent layer
-    ├── ports.py             # Protocol definitions for external services
-    └── ai_agent.py          # Claude Agent SDK remediation agent
+├── agent/                   # Agent layer
+│   ├── ports.py             # Protocol definitions for external services
+│   ├── ai_agent.py          # Claude Agent SDK remediation agent
+│   ├── config.py            # Agent configuration
+│   └── mcp.py               # MCP tool integrations
+└── tasks/                   # Background task layer
+    └── triage.py            # Celery tasks for async triage processing
 ```
 
 ### Key Components
 
-- **App Package**: Webhook routing, event models, infrastructure adapters
-- **Agent Package**: External service protocols, AI integrations
+- **App Package**: Webhook routing, event models, infrastructure adapters, LLM clients
+- **Agent Package**: External service protocols, AI integrations, MCP tool configurations
+- **Tasks Package**: Celery background tasks for asynchronous processing
 - **Ports Pattern**: Protocol-based dependency injection for testability and flexibility
 
 ### Data Flow
 
 1. GitHub webhook → FastAPI endpoint (`/github/webhook`)
-2. Triage service orchestrates (background processing):
+2. Webhook handler enqueues Celery task
+3. Returns 200 OK immediately
+4. Celery worker processes task asynchronously:
    - Context gathering via `GitHubContextProvider`
-   - Diagnosis via `RemediationAgent`
-   - Issue creation via `IssueCreator`
-3. Returns 200 OK immediately (processing continues asynchronously)
+   - Diagnosis via `RemediationAgent` (with MCP tools)
+   - Comment posting or issue creation via `IssueCreator`
 
 ## Development
 

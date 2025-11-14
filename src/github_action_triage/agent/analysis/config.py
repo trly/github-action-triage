@@ -9,11 +9,7 @@ class AnalysisSettings(BaseSettings):
 
     model: str = Field(
         default="anthropic:claude-sonnet-4-5",
-        description="Model for analysis in pydantic-ai format. Examples: 'anthropic:claude-sonnet-4-5', 'ollama:qwen2.5:latest'",
-    )
-    ollama_base_url: str = Field(
-        default="http://localhost:11434/v1",
-        description="Base URL for Ollama server (only used when model starts with 'ollama:')",
+        description="Anthropic model for analysis (pydantic-ai format)",
     )
     timeout_seconds: int = Field(
         default=300,

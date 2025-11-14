@@ -50,8 +50,6 @@ services:
     container_name: triage-worker
     command: sh -c "cd /app && /app/venv/bin/python -m celery -A github_action_triage.app.celery_app:app worker --loglevel=debug --concurrency=2"
     user: appuser
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./src:/app/src:ro
     environment:
@@ -64,8 +62,6 @@ services:
       TRIAGE_SOURCEGRAPH_MCP_URL: ${TRIAGE_SOURCEGRAPH_MCP_URL:-}
       TRIAGE_DISABLE_ISSUE_CREATION: ${TRIAGE_DISABLE_ISSUE_CREATION:-false}
       TRIAGE_LOG_LEVEL: ${TRIAGE_LOG_LEVEL:-INFO}
-      TRIAGE_ANALYSIS_MODEL: ${TRIAGE_ANALYSIS_MODEL:-}
-      TRIAGE_ANALYSIS_OLLAMA_BASE_URL: ${TRIAGE_ANALYSIS_OLLAMA_BASE_URL:-}
     depends_on:
       redis:
         condition: service_healthy

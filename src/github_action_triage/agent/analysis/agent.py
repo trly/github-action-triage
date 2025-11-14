@@ -22,10 +22,6 @@ class TriageAgent(RemediationAgent):
         if self.settings.anthropic_api_key and self.settings.anthropic_api_key.get_secret_value():
             os.environ["ANTHROPIC_API_KEY"] = self.settings.anthropic_api_key.get_secret_value()
 
-        # Set Ollama base URL if using Ollama provider
-        if self.analysis_settings.model.startswith("ollama:"):
-            os.environ["OLLAMA_BASE_URL"] = self.analysis_settings.ollama_base_url
-
         self.sg_toolset = create_sourcegraph_toolset(self.settings)
         if self.sg_toolset:
             logger.info("TriageAgent: Sourcegraph MCP tools enabled")

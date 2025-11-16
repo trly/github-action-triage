@@ -80,10 +80,6 @@ class GitHubContextProvider(Protocol):
 
 
 class RemediationAgent(Protocol):
-    async def prepare(self, context: FailureContext) -> None:
-        """Prepare the agent with failure context without invoking LLM."""
-        ...
-
     async def diagnose_and_propose(self, context: FailureContext) -> RemediationProposal: ...
 
 

@@ -6,7 +6,6 @@ from claude_agent_sdk import ClaudeSDKClient, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import (
     AssistantMessage,
     ClaudeAgentOptions,
-    Message,
     ResultMessage,
     TextBlock,
     ToolResultBlock,

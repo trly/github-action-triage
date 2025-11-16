@@ -9,7 +9,9 @@ from github_action_triage.agent.analysis.agent import TriageAgent
 from github_action_triage.agent.config import get_settings
 from github_action_triage.agent.ports import FailureContext
 from github_action_triage.app.celery_app import app
-from github_action_triage.app.infra.github_issue_creator import GitHubIssueCreatorAdapter
+from github_action_triage.app.infra.github_issue_creator import (
+    GitHubIssueCreatorAdapter,
+)
 from github_action_triage.app.infra.redis_client import set_if_not_exists
 
 logger = logging.getLogger(__name__)
@@ -21,17 +23,18 @@ class TriageTask(Task):
     soft_time_limit = 600
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):  # noqa: ARG002
-        from github_action_triage.tasks.dead_letter import send_to_dead_letter_queue
+        from github_action_triage.tasks import dead_letter
 
         delivery_id = kwargs.get("github_delivery_id", "unknown")
         context_dict = kwargs.get("context", {})
         repo = context_dict.get("repository_full_name", "unknown")
         logger.error(
-            f"Task {task_id} failed for delivery_id={delivery_id}, repo={repo}: {exc}",
+            f"Task {task_id} failed for delivery_id={delivery_id}, "
+            f"repo={repo}: {exc}",
             exc_info=einfo,
         )
 
-        send_to_dead_letter_queue.delay(
+        dead_letter.send_to_dead_letter_queue.delay(  # type: ignore[attr-defined]
             task_id=task_id,
             task_name=self.name,
             args=args,
@@ -50,7 +53,8 @@ def analyze_workflow_failure(
     repo = context.get("repository_full_name", "unknown")
 
     logger.info(
-        f"Starting triage analysis: task_id={task_id}, delivery_id={delivery_id}, repo={repo}"
+        f"Starting triage analysis: task_id={task_id}, "
+        f"delivery_id={delivery_id}, repo={repo}"
     )
 
     if github_delivery_id and self.request.retries == 0:
@@ -72,11 +76,16 @@ def analyze_workflow_failure(
 
         logger.info(
             f"Triage analysis completed: task_id={task_id}, "
-            f"delivery_id={delivery_id}, repo={repo}, issue_title={proposal.issue_title}"
+            f"delivery_id={delivery_id}, repo={repo}, "
+            f"issue_title={proposal.issue_title}"
         )
 
         issue_creator = GitHubIssueCreatorAdapter(settings)
-        issue_url = asyncio.run(issue_creator.create_issue_for_proposal(failure_context.event, proposal))
+        issue_url = asyncio.run(
+            issue_creator.create_issue_for_proposal(
+                failure_context.event, proposal
+            )
+        )
 
         logger.info(
             f"GitHub issue created: task_id={task_id}, "

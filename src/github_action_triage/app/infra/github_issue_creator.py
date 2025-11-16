@@ -68,8 +68,6 @@ class GitHubIssueCreatorAdapter(IssueCreator):
 
 {proposal.identified_issue}
 
-## Remediation Plan
-
 {proposal.remediation_plan}
 
 ---

@@ -25,18 +25,20 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./src:/app/src:ro
-      - ./main.py:/app/main.py:ro
+      - ./src:/app/src
+      - ./main.py:/app/main.py
     environment:
       TRIAGE_REDIS_URL: redis://redis:6379/0
       TRIAGE_GITHUB_WEBHOOK_SECRET: ${TRIAGE_GITHUB_WEBHOOK_SECRET}
       TRIAGE_ANTHROPIC_API_KEY: ${TRIAGE_ANTHROPIC_API_KEY}
       TRIAGE_GITHUB_APP_ID: ${TRIAGE_GITHUB_APP_ID}
       TRIAGE_GITHUB_PRIVATE_KEY: ${TRIAGE_GITHUB_PRIVATE_KEY}
-      TRIAGE_MCP_ENABLE_SOURCEGRAPH: ${TRIAGE_MCP_ENABLE_SOURCEGRAPH:-false}
       TRIAGE_SOURCEGRAPH_TOKEN: ${TRIAGE_SOURCEGRAPH_TOKEN:-}
       TRIAGE_SOURCEGRAPH_MCP_URL: ${TRIAGE_SOURCEGRAPH_MCP_URL:-}
       TRIAGE_LOG_LEVEL: ${TRIAGE_LOG_LEVEL:-INFO}
+      # Optional: TriageAgent (pydantic-ai) analysis configuration
+      TRIAGE_ANALYSIS_MODEL: ${TRIAGE_ANALYSIS_MODEL:-anthropic:claude-sonnet-4-5}
+      TRIAGE_ANALYSIS_TIMEOUT_SECONDS: ${TRIAGE_ANALYSIS_TIMEOUT_SECONDS:-300}
     depends_on:
       redis:
         condition: service_healthy
@@ -57,11 +59,13 @@ services:
       TRIAGE_ANTHROPIC_API_KEY: ${TRIAGE_ANTHROPIC_API_KEY}
       TRIAGE_GITHUB_APP_ID: ${TRIAGE_GITHUB_APP_ID}
       TRIAGE_GITHUB_PRIVATE_KEY: ${TRIAGE_GITHUB_PRIVATE_KEY}
-      TRIAGE_MCP_ENABLE_SOURCEGRAPH: ${TRIAGE_MCP_ENABLE_SOURCEGRAPH:-false}
       TRIAGE_SOURCEGRAPH_TOKEN: ${TRIAGE_SOURCEGRAPH_TOKEN:-}
       TRIAGE_SOURCEGRAPH_MCP_URL: ${TRIAGE_SOURCEGRAPH_MCP_URL:-}
       TRIAGE_DISABLE_ISSUE_CREATION: ${TRIAGE_DISABLE_ISSUE_CREATION:-false}
       TRIAGE_LOG_LEVEL: ${TRIAGE_LOG_LEVEL:-INFO}
+      # Optional: TriageAgent (pydantic-ai) analysis configuration
+      TRIAGE_ANALYSIS_MODEL: ${TRIAGE_ANALYSIS_MODEL:-anthropic:claude-sonnet-4-5}
+      TRIAGE_ANALYSIS_TIMEOUT_SECONDS: ${TRIAGE_ANALYSIS_TIMEOUT_SECONDS:-300}
     depends_on:
       redis:
         condition: service_healthy

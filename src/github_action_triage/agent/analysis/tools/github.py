@@ -7,16 +7,25 @@ from githubkit.auth import AppAuthStrategy
 from pydantic_ai import FunctionToolset, RunContext
 
 from github_action_triage.agent.config import Settings
+from github_action_triage.agent.ports import FailureContext
 
 
 class GitHubToolContext:
-    """Context for GitHub tools - includes authentication info."""
+    """Context for GitHub tools - includes authentication info and failure context."""
 
-    def __init__(self, settings: Settings, owner: str, repo: str, installation_id: int):
+    def __init__(
+        self,
+        settings: Settings,
+        owner: str,
+        repo: str,
+        installation_id: int,
+        failure: FailureContext,
+    ):
         self.settings = settings
         self.owner = owner
         self.repo = repo
         self.installation_id = installation_id
+        self.failure = failure
 
 
 github_toolset = FunctionToolset()

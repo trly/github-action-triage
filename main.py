@@ -1,4 +1,5 @@
 import logging
+
 from github_action_triage.app.config.settings import get_settings
 from github_action_triage.app.factory import create_app
 

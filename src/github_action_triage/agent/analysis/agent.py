@@ -1,13 +1,30 @@
+import io
 import logging
 import os
+import zipfile
+from typing import Any
 
-from pydantic_ai import Agent
+from githubkit import GitHub
+from githubkit.auth import AppAuthStrategy
+from pydantic_ai import Agent, RunContext
 
 from github_action_triage.agent.analysis.config import get_analysis_settings
-from github_action_triage.agent.analysis.tools.github import GitHubToolContext, github_toolset
-from github_action_triage.agent.analysis.tools.sourcegraph import create_sourcegraph_toolset
+from github_action_triage.agent.analysis.instructions import (
+    base_instructions,
+    github_context_instructions,
+    output_requirements_instructions,
+    sourcegraph_mcp_instructions,
+)
+from github_action_triage.agent.analysis.tools.github import GitHubToolContext
+from github_action_triage.agent.analysis.tools.sourcegraph import (
+    create_sourcegraph_toolset,
+)
 from github_action_triage.agent.config import get_settings
-from github_action_triage.agent.ports import FailureContext, RemediationAgent, RemediationProposal
+from github_action_triage.agent.ports import (
+    FailureContext,
+    RemediationAgent,
+    RemediationProposal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,126 +39,171 @@ class TriageAgent(RemediationAgent):
         if self.settings.anthropic_api_key and self.settings.anthropic_api_key.get_secret_value():
             os.environ["ANTHROPIC_API_KEY"] = self.settings.anthropic_api_key.get_secret_value()
 
+        # Create Sourcegraph MCP toolset if configured
         self.sg_toolset = create_sourcegraph_toolset(self.settings)
         if self.sg_toolset:
-            logger.info("TriageAgent: Sourcegraph MCP tools enabled")
+            logger.info(f"TriageAgent: Sourcegraph MCP tools enabled - toolset type: {type(self.sg_toolset).__name__}")
         else:
             logger.info("TriageAgent: Running without Sourcegraph MCP tools")
 
-        system_prompt = self._build_system_prompt()
-
-        toolsets = [github_toolset]
-        if self.sg_toolset:
-            toolsets.append(self.sg_toolset)
-
+        # Create agent with optional MCP toolset
+        toolsets = [self.sg_toolset] if self.sg_toolset else None
+        logger.info(f"TriageAgent: Creating agent with toolsets={toolsets is not None}")
         self.agent = Agent(
             self.analysis_settings.model,
             deps_type=GitHubToolContext,
             output_type=RemediationProposal,
             toolsets=toolsets,
-            system_prompt=system_prompt,
         )
+        logger.info(f"TriageAgent: Agent created successfully")
 
-    def _build_system_prompt(self) -> str:
-        """Build system prompt with conditional MCP tools section."""
-        base_prompt = """You are a GitHub Actions workflow failure analysis expert.
-Your objective is to diagnose the root cause of workflow failures and propose actionable remediation plans.
+        self._register_tools()
+        self._register_instructions()
 
-## Analysis Workflow
-
-1. Use get_job to retrieve job metadata (this includes the commit SHA and branch)
-2. Use get_job_logs to retrieve the failure logs
-3. Identify the root cause of the failure"""
+    def _register_instructions(self) -> None:
+        """Register agent instructions as separate methods."""
+        self.agent.instructions(base_instructions)
+        self.agent.instructions(github_context_instructions)
 
         if self.sg_toolset:
-            base_prompt += """
-
-**CRITICAL:** You do not have a local checkout of the target repository. Code inspection MUST be performed using Sourcegraph MCP tools.
-Use sg_read_file to validate proposed fixes. Even if it appears clear from the job log.
-
-**When analyzing failures:**
-1. Extract the commit SHA from the job metadata (from get_job)
-2. Use revision parameter to read/search code at that exact commit
-3. Examine the actual code that failed, not just guess from logs
-4. Look for recent changes using sg_commit_search or sg_compare_revisions
-5. Track all files you investigate in the involved_files field
-6. Provide specific fixes with line numbers and code references"""
+            logger.info("TriageAgent: Registering Sourcegraph MCP instructions")
+            self.agent.instructions(sourcegraph_mcp_instructions)
         else:
-            base_prompt += """
-4. Suggest a fix based on the logs and your knowledge"""
+            logger.info("TriageAgent: Skipping Sourcegraph MCP instructions (no toolset)")
 
-        base_prompt += """
+        self.agent.instructions(output_requirements_instructions)
 
-## Output Requirements
+    def _register_tools(self) -> None:
+        """Register agent tools."""
 
-You MUST populate ALL fields in the RemediationProposal output:
+        @self.agent.tool(docstring_format="google", require_parameter_descriptions=True)
+        async def get_job(ctx: RunContext[GitHubToolContext], job_id: int) -> dict[str, Any]:
+            """Get information about a specific GitHub Actions job.
 
-- **issue_title**: Short, actionable title for GitHub issue (< 80 characters)
-  Example: "Ruff linting errors in source files"
+            Args:
+                job_id: The job ID from the webhook
 
-- **identified_issue**: Precise description of the root cause (not just the symptom)
+            Returns:
+                Dictionary containing job details including status, conclusion,
+                steps, commit SHA, branch, etc.
+            """
+            return await self._tool_get_job(ctx, job_id)
 
-- **fix_effort**: Estimated remediation effort:
-  - `small`: < 1 hour (configuration adjustments, dependency version updates, trivial fixes)
-  - `medium`: 1-4 hours (logic corrections, test modifications, localized refactoring)
-  - `large`: > 4 hours (architectural modifications, extensive refactoring, complex debugging)
+        @self.agent.tool(docstring_format="google", require_parameter_descriptions=True)
+        async def get_job_logs(ctx: RunContext[GitHubToolContext], job_id: int) -> str:
+            """Get logs for a specific GitHub Actions job.
 
-- **remediation_plan**: Structured, step-by-step implementation plan (markdown format)
-  - Use clear headers, code blocks, and bullet points
-  - Include specific file paths and line numbers
-  - Provide concrete code examples where applicable
+            Args:
+                job_id: The job ID from the webhook
 
-- **job_metadata**: The full job metadata dict returned from get_job()
-  - MUST include: head_sha, head_branch, status, conclusion, steps, html_url
+            Returns:
+                String containing the job logs
+            """
+            return await self._tool_get_job_logs(ctx, job_id)
 
-- **involved_files**: List of all file paths you investigated during analysis
-  - Include files read via sg_read_file, sg_list_files, or mentioned in searches
-  - Use repository-relative paths (e.g., "src/main.go", not full URLs)
-  - This helps track investigation scope and plan remediation
+    async def _tool_get_job(
+        self, ctx: RunContext[GitHubToolContext], job_id: int
+    ) -> dict[str, Any]:
+        """Implementation of get_job tool."""
+        github = await self._get_installation_client(ctx)
 
-## Output Format
+        response = await github.rest.actions.async_get_job_for_workflow_run(
+            owner=ctx.deps.owner,
+            repo=ctx.deps.repo,
+            job_id=job_id,
+        )
 
-- Use clean, professional markdown formatting
-- DO NOT use emojis
-- Focus on technical accuracy and implementability
-- Ensure output is suitable for engineers and AI agents to implement fixes"""
+        job_data = response.parsed_data
+        return {
+            "id": job_data.id,
+            "status": job_data.status,
+            "conclusion": job_data.conclusion,
+            "steps": [
+                {
+                    "name": step.name,
+                    "status": step.status,
+                    "conclusion": step.conclusion,
+                    "number": step.number,
+                }
+                for step in (job_data.steps or [])
+            ],
+            "head_sha": job_data.head_sha,
+            "head_branch": job_data.head_branch,
+            "html_url": job_data.html_url,
+        }
 
-        return base_prompt
+    async def _tool_get_job_logs(self, ctx: RunContext[GitHubToolContext], job_id: int) -> str:
+        """Implementation of get_job_logs tool."""
+        github = await self._get_installation_client(ctx)
 
-    async def prepare(self, context: FailureContext) -> None:
-        """Prepare the agent with failure context without invoking LLM."""
-        pass
+        try:
+            logs_response = await github.rest.actions.async_download_job_logs_for_workflow_run(
+                owner=ctx.deps.owner,
+                repo=ctx.deps.repo,
+                job_id=job_id,
+            )
+            logs_bytes = logs_response.content
+
+            return self._extract_logs_from_archive(logs_bytes)
+        except Exception as e:
+            return f"[Logs unavailable: {e!s}]"
+
+    async def _get_installation_client(self, ctx: RunContext[GitHubToolContext]) -> GitHub:
+        """Create GitHub App installation client with installation token."""
+        auth = AppAuthStrategy(
+            app_id=ctx.deps.settings.github_app_id,
+            private_key=ctx.deps.settings.github_private_key,
+        )
+        github_app_client = GitHub(auth=auth)
+
+        token_response = await github_app_client.rest.apps.async_create_installation_access_token(
+            installation_id=ctx.deps.installation_id
+        )
+        installation_token = token_response.parsed_data.token
+
+        return GitHub(installation_token)
+
+    @staticmethod
+    def _extract_logs_from_archive(logs_bytes: bytes) -> str:
+        """Extract logs from GitHub's zip archive format."""
+        try:
+            with zipfile.ZipFile(io.BytesIO(logs_bytes)) as zf:
+                file_list = zf.namelist()
+                if file_list:
+                    with zf.open(file_list[0]) as log_file:
+                        logs_bytes = log_file.read()
+        except zipfile.BadZipFile:
+            pass
+
+        return logs_bytes.decode("utf-8", errors="replace")
 
     async def diagnose_and_propose(self, context: FailureContext) -> RemediationProposal:
         """Analyze workflow failure and produce structured remediation proposal."""
-        # Build GitHub tool context from FailureContext
+        # Build GitHub tool context with FailureContext included
         github_context = GitHubToolContext(
             settings=self.settings,
             owner=context.event.repository.owner,
             repo=context.event.repository.name,
             installation_id=context.event.installation_id,
+            failure=context,
         )
 
-        # Build analysis prompt
-        prompt = f"""Analyze the following GitHub Actions workflow failure:
+        # Build analysis prompt - context available via deps
+        prompt = f"""Analyze the GitHub Actions workflow failure:
 
 **Repository:** {context.repository_full_name}
 **Branch:** {context.branch_ref}
-**Commit SHA:** {context.head_commit_sha}
+**Commit:** {context.head_commit_sha}
 **Job ID:** {context.job_id}
-**Job URL:** {context.job_html_url}
 
-**Workflow Details:**
-- Workflow: {context.event.workflow.workflow_name}
-- Job: {context.event.workflow.job_name}
-- Run ID: {context.event.workflow.run_id}
+**Workflow:** {context.event.workflow.workflow_name} / {context.event.workflow.job_name}
 
 **Logs Excerpt:**
 ```
 {context.logs_excerpt}
 ```
 
-Use get_job({context.job_id}) to retrieve full job metadata and get_job_logs({context.job_id}) for complete logs.
+Use get_job() to retrieve full job metadata and get_job_logs() for complete logs.
 
 Diagnose the failure and provide a comprehensive remediation proposal."""
 
@@ -156,4 +218,3 @@ Diagnose the failure and provide a comprehensive remediation proposal."""
             f"TriageAgent: Analysis complete - {result.output.issue_title}")
 
         return result.output
-

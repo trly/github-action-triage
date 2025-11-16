@@ -12,7 +12,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import patch
 
 from github_action_triage.agent.analysis.agent import TriageAgent
 from github_action_triage.agent.ports import (
@@ -22,7 +22,6 @@ from github_action_triage.agent.ports import (
     WorkflowRef,
     WorkflowRunFailureEvent,
 )
-
 
 VALIDATION_SCENARIOS = [
     {
@@ -137,7 +136,7 @@ def create_mock_github_responses(context: FailureContext):
 
 async def mock_get_installation_client(ctx):
     """Mock GitHub client - always returns None (tools handle this)."""
-    return None
+    return
 
 
 async def validate_scenario(scenario: dict) -> dict:
@@ -211,9 +210,9 @@ async def validate_scenario(scenario: dict) -> dict:
         
         all_passed = all(validation_result["validations"].values())
         if all_passed:
-            print(f"\n✓ All validations passed")
+            print("\n✓ All validations passed")
         else:
-            print(f"\n✗ Some validations failed:")
+            print("\n✗ Some validations failed:")
             for check, passed in validation_result["validations"].items():
                 if not passed:
                     print(f"  - {check}: FAILED")
@@ -272,9 +271,8 @@ async def main():
     if successful == total:
         print("\n✓✓✓ ALL VALIDATIONS PASSED ✓✓✓")
         return 0
-    else:
-        print(f"\n✗✗✗ {total - successful} VALIDATION(S) FAILED ✗✗✗")
-        return 1
+    print(f"\n✗✗✗ {total - successful} VALIDATION(S) FAILED ✗✗✗")
+    return 1
 
 
 if __name__ == "__main__":

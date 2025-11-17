@@ -34,6 +34,7 @@ class TriageAgent(RemediationAgent):
     def __init__(self):
         self.settings = get_settings()
         self.analysis_settings = get_analysis_settings()
+        self._last_result = None
 
         if self.settings.anthropic_api_key and self.settings.anthropic_api_key.get_secret_value():
             os.environ["ANTHROPIC_API_KEY"] = self.settings.anthropic_api_key.get_secret_value()
@@ -135,11 +136,11 @@ Diagnose the failure and provide a comprehensive remediation proposal."""
 
         logger.info(f"TriageAgent: Starting analysis for job {context.job_id}")
 
-        result = await self.agent.run(
+        self._last_result = await self.agent.run(
             prompt,
             deps=github_context,
         )
 
-        logger.info(f"TriageAgent: Analysis complete - {result.output.issue_title}")
+        logger.info(f"TriageAgent: Analysis complete - {self._last_result.output.issue_title}")
 
-        return result.output
+        return self._last_result.output

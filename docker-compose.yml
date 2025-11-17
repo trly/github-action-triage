@@ -50,7 +50,7 @@ services:
       dockerfile: Dockerfile
       target: worker
     container_name: triage-worker
-    command: sh -c "cd /app && /app/venv/bin/python -m celery -A github_action_triage.app.celery_app:app worker --loglevel=debug --concurrency=2"
+    command: sh -c "cd /app && /app/venv/bin/python -m celery -A github_action_triage.app.celery_app:app worker --loglevel=info --concurrency=2"
     user: appuser
     volumes:
       - ./src:/app/src:ro

@@ -59,10 +59,22 @@ def test_task_successfully_analyzes_failure(failure_context_dict, remediation_pr
         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
+        # Create mock tool
+        mock_tool = MagicMock()
+        mock_tool.name = "get_job_logs"
+
+        # Create mock result
+        mock_result = MagicMock()
+        mock_result.all_messages.return_value = []
+
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.return_value = remediation_proposal
+        mock_agent._last_result = mock_result
+        mock_agent.agent = MagicMock()
+        mock_agent.agent.tools = [mock_tool]
         mock_agent_class.return_value = mock_agent
 
+        mock_settings.return_value.disable_issue_creation = False
         mock_creator = AsyncMock()
         mock_creator.create_issue_for_proposal.return_value = (
             "https://github.com/test-org/test-repo/issues/1"
@@ -124,10 +136,22 @@ def test_task_processes_when_no_delivery_id(failure_context_dict, remediation_pr
         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists") as mock_setnx,
     ):
+        # Create mock tool
+        mock_tool = MagicMock()
+        mock_tool.name = "get_job_logs"
+
+        # Create mock result
+        mock_result = MagicMock()
+        mock_result.all_messages.return_value = []
+
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.return_value = remediation_proposal
+        mock_agent._last_result = mock_result
+        mock_agent.agent = MagicMock()
+        mock_agent.agent.tools = [mock_tool]
         mock_agent_class.return_value = mock_agent
 
+        mock_settings.return_value.disable_issue_creation = False
         mock_creator = AsyncMock()
         mock_creator.create_issue_for_proposal.return_value = (
             "https://github.com/test-org/test-repo/issues/1"
@@ -208,7 +232,8 @@ def test_task_on_failure_callback(caplog):
     class FakeEinfo:
         pass
 
-    task.on_failure(exc, task_id, [], kwargs, FakeEinfo())
+    with patch("github_action_triage.tasks.dead_letter.send_to_dead_letter_queue"):
+        task.on_failure(exc, task_id, [], kwargs, FakeEinfo())
 
     assert "Task task-123 failed" in caplog.text
     assert "delivery_id=delivery-456" in caplog.text

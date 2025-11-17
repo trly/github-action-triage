@@ -71,7 +71,7 @@ def mock_settings():
 
 
 @pytest.mark.asyncio
-async def test_triage_agent_initialization(_mock_settings):
+async def test_triage_agent_initialization(mock_settings):
     agent = TriageAgent()
 
     assert agent.settings is not None
@@ -80,7 +80,7 @@ async def test_triage_agent_initialization(_mock_settings):
 
 
 @pytest.mark.asyncio
-async def test_diagnose_and_propose_returns_remediation_proposal(_mock_settings, failure_context):
+async def test_diagnose_and_propose_returns_remediation_proposal(mock_settings, failure_context):
     expected_proposal = RemediationProposal(
         issue_title="npm install failed - missing package-lock.json",
         identified_issue="Workflow failed because package-lock.json is missing",
@@ -118,7 +118,7 @@ async def test_diagnose_and_propose_returns_remediation_proposal(_mock_settings,
 
 
 @pytest.mark.asyncio
-async def test_diagnose_and_propose_includes_context_in_prompt(_mock_settings, failure_context):
+async def test_diagnose_and_propose_includes_context_in_prompt(mock_settings, failure_context):
     expected_proposal = RemediationProposal(
         issue_title="Test issue",
         identified_issue="Test issue",
@@ -146,7 +146,7 @@ async def test_diagnose_and_propose_includes_context_in_prompt(_mock_settings, f
 
 
 @pytest.mark.asyncio
-async def test_diagnose_and_propose_passes_github_context_to_tools(_mock_settings, failure_context):
+async def test_diagnose_and_propose_passes_github_context_to_tools(mock_settings, failure_context):
     expected_proposal = RemediationProposal(
         issue_title="Test",
         identified_issue="Test",
@@ -220,7 +220,7 @@ async def test_remediation_proposal_optional_fields_default():
 
 
 @pytest.mark.asyncio
-async def test_diagnose_and_propose_with_all_fields_populated(_mock_settings, failure_context):
+async def test_diagnose_and_propose_with_all_fields_populated(mock_settings, failure_context):
     expected_proposal = RemediationProposal(
         issue_title="Ruff linting errors",
         identified_issue="Multiple Python files have linting violations",
@@ -266,7 +266,7 @@ async def test_diagnose_and_propose_with_all_fields_populated(_mock_settings, fa
 
 
 @pytest.mark.asyncio
-async def test_tools_are_registered_with_correct_schema(_mock_settings):
+async def test_tools_are_registered_with_correct_schema(mock_settings):
     """Validate that get_job and get_job_logs tools are registered with correct schemas."""
     agent = TriageAgent()
 

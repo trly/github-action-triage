@@ -229,7 +229,7 @@ src/github_action_triage/
 │   └── api.py                # Service orchestration
 └── agent/                    # Domain ports
     ├── ports.py              # Protocol definitions
-    └── ai_agent.py           # AI integrations
+    └── analysis/             # pydantic-ai agent implementation
 ```
 
 ### Key Patterns

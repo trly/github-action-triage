@@ -30,13 +30,13 @@ src/github_action_triage/
 │   └── factory.py           # FastAPI application factory
 ├── agent/                   # Agent layer
 │   ├── analysis/            # Analysis agent implementation
-│   │   ├── agent.py         # Core analysis agent
+│   │   ├── agent.py         # Core analysis agent (pydantic-ai)
 │   │   ├── config.py        # Analysis agent configuration
+│   │   ├── instructions.py  # Agent instruction builders
 │   │   └── tools/           # Agent tool integrations
 │   │       ├── github.py    # GitHub API tools
 │   │       └── sourcegraph.py # Sourcegraph code search tools
 │   ├── ports.py             # Protocol definitions for external services
-│   ├── ai_agent.py          # Claude Agent SDK remediation agent
 │   ├── config.py            # Agent configuration
 │   └── mcp.py               # MCP tool integrations
 └── tasks/                   # Background task layer

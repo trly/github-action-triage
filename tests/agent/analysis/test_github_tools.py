@@ -25,12 +25,50 @@ def settings():
 
 
 @pytest.fixture
-def github_context(settings):
+def failure_context():
+    from github_action_triage.agent.ports import (
+        FailureContext,
+        FailureSummary,
+        RepositoryRef,
+        WorkflowRef,
+        WorkflowRunFailureEvent,
+    )
+    
+    event = WorkflowRunFailureEvent(
+        installation_id=12345,
+        repository=RepositoryRef(owner="test-org", name="test-repo"),
+        workflow=WorkflowRef(
+            run_id="123",
+            job_id="456",
+            workflow_name="CI",
+            job_name="build",
+            run_url="https://github.com/test-org/test-repo/actions/runs/123",
+        ),
+        failure=FailureSummary(
+            conclusion="failure",
+            logs_snippet="Error: test failure",
+        ),
+    )
+    return FailureContext(
+        event=event,
+        job_id=123456,
+        repository_full_name="test-org/test-repo",
+        head_commit_sha="abc123",
+        branch_ref="refs/heads/main",
+        job_html_url="https://github.com/test-org/test-repo/actions/runs/123/job/456",
+        logs_url="https://api.github.com/repos/test-org/test-repo/actions/jobs/123456/logs",
+        logs_excerpt="Error: test failure",
+    )
+
+
+@pytest.fixture
+def github_context(settings, failure_context):
     return GitHubToolContext(
         settings=settings,
         owner="test-org",
         repo="test-repo",
         installation_id=12345,
+        failure=failure_context,
     )
 
 

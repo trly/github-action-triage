@@ -55,7 +55,7 @@ class TriageAgent(RemediationAgent):
             output_type=RemediationProposal,
             toolsets=toolsets,
         )
-        logger.info(f"TriageAgent: Agent created successfully")
+        logger.info("TriageAgent: Agent created successfully")
 
         self._register_tools()
         self._register_instructions()

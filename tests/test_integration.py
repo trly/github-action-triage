@@ -282,42 +282,7 @@ async def test_actuator_apply_fix_called(failure_event, failure_context, remedia
     assert call_args[0][1].fix_effort == "small"
 
 
-@pytest.mark.asyncio
-async def test_submit_proposal_tool_returns_remediation():
-    """Test the submit_proposal tool directly to verify proper RemediationProposal construction."""
-    from github_action_triage.agent.ai_agent import ActionTriageAgent
-    from github_action_triage.app.config.settings import Settings
 
-    settings = Settings(anthropic_api_key="test-key")
-    agent = ActionTriageAgent(settings)
-
-    proposal_storage = {"proposal": None}
-    submit_tool = agent._create_submit_proposal_tool(proposal_storage)
-
-    result = await submit_tool.handler(
-        {
-            "issue_title": "Dependency version conflict",
-            "identified_issue": "Dependency version conflict in package.json",
-            "fix_effort": "medium",
-            "remediation_plan": "1. Update conflicting dependencies\n2. Run npm audit fix\n3. Test locally\n4. Commit changes",
-        }
-    )
-
-    assert result is not None
-    assert "content" in result
-    assert result["content"][0]["type"] == "text"
-    assert "success" in result["content"][0]["text"].lower()
-
-    stored_proposal = proposal_storage["proposal"]
-    assert stored_proposal is not None
-    assert isinstance(stored_proposal, RemediationProposal)
-    assert stored_proposal.issue_title == "Dependency version conflict"
-    assert stored_proposal.identified_issue == "Dependency version conflict in package.json"
-    assert stored_proposal.fix_effort == "medium"
-    assert (
-        stored_proposal.remediation_plan
-        == "1. Update conflicting dependencies\n2. Run npm audit fix\n3. Test locally\n4. Commit changes"
-    )
 
 
 @pytest.mark.asyncio

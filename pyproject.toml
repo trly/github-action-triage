@@ -74,10 +74,4 @@ select = [
   "A002",   # Allow shadowing built-ins (test helper classes)
   "F841",   # Allow unused local variables (when testing side effects)
 ]
-"src/github_action_triage/agent/ai_agent.py" = [
-  "E501",
-] # Allow long lines in AI prompts
-"src/github_action_triage/agent/mcp.py" = [
-  "E501",
-] # Allow long lines in log messages
 "src/github_action_triage/app/api.py" = ["E501"] # Allow long lines in messages

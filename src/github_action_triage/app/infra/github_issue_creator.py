@@ -27,7 +27,7 @@ class GitHubIssueCreatorAdapter(IssueCreator):
         self, event: WorkflowRunFailureEvent, proposal: RemediationProposal
     ) -> str:
         body = self._format_issue_body(event, proposal)
-        
+
         # Check if issue creation is disabled (for testing)
         if self._settings.disable_issue_creation:
             logger.info(
@@ -39,7 +39,7 @@ class GitHubIssueCreatorAdapter(IssueCreator):
             )
             logger.debug(f"Issue body:\n{body}")
             return f"https://github.com/{event.repository.owner}/{event.repository.name}/issues/0"
-        
+
         response = await self._client.rest.apps.async_create_installation_access_token(
             installation_id=event.installation_id
         )
@@ -56,7 +56,9 @@ class GitHubIssueCreatorAdapter(IssueCreator):
 
         return response.parsed_data.html_url
 
-    def _format_issue_body(self, event: WorkflowRunFailureEvent, proposal: RemediationProposal) -> str:
+    def _format_issue_body(
+        self, event: WorkflowRunFailureEvent, proposal: RemediationProposal
+    ) -> str:
         return f"""## Workflow Failure Detected
 
 **Workflow**: {event.workflow.workflow_name}

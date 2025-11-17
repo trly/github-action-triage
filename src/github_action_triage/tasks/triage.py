@@ -29,8 +29,7 @@ class TriageTask(Task):
         context_dict = kwargs.get("context", {})
         repo = context_dict.get("repository_full_name", "unknown")
         logger.error(
-            f"Task {task_id} failed for delivery_id={delivery_id}, "
-            f"repo={repo}: {exc}",
+            f"Task {task_id} failed for delivery_id={delivery_id}, repo={repo}: {exc}",
             exc_info=einfo,
         )
 
@@ -53,8 +52,7 @@ def analyze_workflow_failure(
     repo = context.get("repository_full_name", "unknown")
 
     logger.info(
-        f"Starting triage analysis: task_id={task_id}, "
-        f"delivery_id={delivery_id}, repo={repo}"
+        f"Starting triage analysis: task_id={task_id}, delivery_id={delivery_id}, repo={repo}"
     )
 
     if github_delivery_id and self.request.retries == 0:
@@ -82,9 +80,7 @@ def analyze_workflow_failure(
 
         issue_creator = GitHubIssueCreatorAdapter(settings)
         issue_url = asyncio.run(
-            issue_creator.create_issue_for_proposal(
-                failure_context.event, proposal
-            )
+            issue_creator.create_issue_for_proposal(failure_context.event, proposal)
         )
 
         logger.info(

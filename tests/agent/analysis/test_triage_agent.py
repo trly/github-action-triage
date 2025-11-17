@@ -289,8 +289,7 @@ async def test_tools_are_registered_with_correct_schema(mock_settings):
     )
 
     # Check get_job_logs tool
-    get_job_logs_tool = next(
-        (t for t in tools if t.name == "get_job_logs"), None)
+    get_job_logs_tool = next((t for t in tools if t.name == "get_job_logs"), None)
     assert get_job_logs_tool is not None
     assert get_job_logs_tool.description is not None
     assert "logs" in str(get_job_logs_tool.description).lower()

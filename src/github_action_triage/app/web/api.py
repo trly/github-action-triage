@@ -23,8 +23,7 @@ async def handle_webhook(request: Request) -> JSONResponse:
     event_name = request.headers.get("X-GitHub-Event")
     delivery_id = request.headers.get("X-GitHub-Delivery")
 
-    logger.debug(f"Received GitHub webhook: event={
-                 event_name}, delivery_id={delivery_id}")
+    logger.debug(f"Received GitHub webhook: event={event_name}, delivery_id={delivery_id}")
 
     if not event_name:
         raise HTTPException(
@@ -60,8 +59,7 @@ async def handle_webhook(request: Request) -> JSONResponse:
         # Extract GitHub delivery ID for idempotency
         github_delivery_id = request.headers.get("X-GitHub-Delivery")
         if not github_delivery_id:
-            repo = f"{
-                triage_event.repository.owner}/{triage_event.repository.name}"
+            repo = f"{triage_event.repository.owner}/{triage_event.repository.name}"
             logger.warning(f"Missing X-GitHub-Delivery header for {repo}")
 
         # Fetch failure context
@@ -74,8 +72,7 @@ async def handle_webhook(request: Request) -> JSONResponse:
         )
 
         logger.info(
-            f"Enqueued triage task: task_id={
-                task.id}, delivery_id={github_delivery_id}, "
+            f"Enqueued triage task: task_id={task.id}, delivery_id={github_delivery_id}, "
             f"repo={context.repository_full_name}"
         )
 

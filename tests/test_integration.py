@@ -282,9 +282,6 @@ async def test_actuator_apply_fix_called(failure_event, failure_context, remedia
     assert call_args[0][1].fix_effort == "small"
 
 
-
-
-
 @pytest.mark.asyncio
 async def test_end_to_end_integration_flow(
     failure_event, failure_context, remediation_proposal, caplog

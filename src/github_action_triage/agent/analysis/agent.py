@@ -42,7 +42,9 @@ class TriageAgent(RemediationAgent):
         # Create Sourcegraph MCP toolset if configured
         self.sg_toolset = create_sourcegraph_toolset(self.settings)
         if self.sg_toolset:
-            logger.info(f"TriageAgent: Sourcegraph MCP tools enabled - toolset type: {type(self.sg_toolset).__name__}")
+            logger.info(
+                f"TriageAgent: Sourcegraph MCP tools enabled - toolset type: {type(self.sg_toolset).__name__}"
+            )
         else:
             logger.info("TriageAgent: Running without Sourcegraph MCP tools")
 
@@ -214,7 +216,6 @@ Diagnose the failure and provide a comprehensive remediation proposal."""
             deps=github_context,
         )
 
-        logger.info(
-            f"TriageAgent: Analysis complete - {result.output.issue_title}")
+        logger.info(f"TriageAgent: Analysis complete - {result.output.issue_title}")
 
         return result.output

@@ -33,7 +33,7 @@ def failure_context():
         WorkflowRef,
         WorkflowRunFailureEvent,
     )
-    
+
     event = WorkflowRunFailureEvent(
         installation_id=12345,
         repository=RepositoryRef(owner="test-org", name="test-repo"),
@@ -88,19 +88,19 @@ async def test_get_job_returns_formatted_job_data(run_context, monkeypatch):
     mock_job_data.head_sha = "abc123def"
     mock_job_data.head_branch = "main"
     mock_job_data.html_url = "https://github.com/test-org/test-repo/actions/runs/123"
-    
+
     step1 = Mock()
     step1.name = "Checkout"
     step1.status = "completed"
     step1.conclusion = "success"
     step1.number = 1
-    
+
     step2 = Mock()
     step2.name = "Build"
     step2.status = "completed"
     step2.conclusion = "failure"
     step2.number = 2
-    
+
     mock_job_data.steps = [step1, step2]
 
     mock_response = Mock()
@@ -171,7 +171,7 @@ async def test_get_job_handles_no_steps(run_context, monkeypatch):
 @pytest.mark.asyncio
 async def test_get_job_logs_extracts_from_zip_archive(run_context, monkeypatch):
     log_content = "Step 1: Running tests\nStep 2: Build failed\nError: npm install failed"
-    
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("job.log", log_content)
@@ -251,7 +251,7 @@ async def test_get_job_logs_handles_api_failure(run_context, monkeypatch):
 
 def test_extract_logs_from_archive_handles_zip():
     log_content = "Test log content from zip"
-    
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("log_file.txt", log_content)

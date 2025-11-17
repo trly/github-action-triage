@@ -1,21 +1,20 @@
-import io
 import logging
 import os
-import zipfile
-from typing import Any
 
-from githubkit import GitHub
-from githubkit.auth import AppAuthStrategy
 from pydantic_ai import Agent, RunContext
 
 from github_action_triage.agent.analysis.config import get_analysis_settings
+from github_action_triage.agent.analysis.github import (
+    GitHubToolContext,
+    fetch_job_logs,
+    get_installation_client,
+)
 from github_action_triage.agent.analysis.instructions import (
     base_instructions,
     github_context_instructions,
     output_requirements_instructions,
     sourcegraph_mcp_instructions,
 )
-from github_action_triage.agent.analysis.tools.github import GitHubToolContext
 from github_action_triage.agent.analysis.tools.sourcegraph import (
     create_sourcegraph_toolset,
 )
@@ -43,7 +42,9 @@ class TriageAgent(RemediationAgent):
         self.sg_toolset = create_sourcegraph_toolset(self.settings)
         if self.sg_toolset:
             logger.info(
-                f"TriageAgent: Sourcegraph MCP tools enabled - toolset type: {type(self.sg_toolset).__name__}"
+                f"TriageAgent: Sourcegraph MCP tools enabled - toolset type: {
+                    type(self.sg_toolset).__name__
+                }"
             )
         else:
             logger.info("TriageAgent: Running without Sourcegraph MCP tools")
@@ -79,19 +80,6 @@ class TriageAgent(RemediationAgent):
         """Register agent tools."""
 
         @self.agent.tool(docstring_format="google", require_parameter_descriptions=True)
-        async def get_job(ctx: RunContext[GitHubToolContext], job_id: int) -> dict[str, Any]:
-            """Get information about a specific GitHub Actions job.
-
-            Args:
-                job_id: The job ID from the webhook
-
-            Returns:
-                Dictionary containing job details including status, conclusion,
-                steps, commit SHA, branch, etc.
-            """
-            return await self._tool_get_job(ctx, job_id)
-
-        @self.agent.tool(docstring_format="google", require_parameter_descriptions=True)
         async def get_job_logs(ctx: RunContext[GitHubToolContext], job_id: int) -> str:
             """Get logs for a specific GitHub Actions job.
 
@@ -101,83 +89,10 @@ class TriageAgent(RemediationAgent):
             Returns:
                 String containing the job logs
             """
-            return await self._tool_get_job_logs(ctx, job_id)
-
-    async def _tool_get_job(
-        self, ctx: RunContext[GitHubToolContext], job_id: int
-    ) -> dict[str, Any]:
-        """Implementation of get_job tool."""
-        github = await self._get_installation_client(ctx)
-
-        response = await github.rest.actions.async_get_job_for_workflow_run(
-            owner=ctx.deps.owner,
-            repo=ctx.deps.repo,
-            job_id=job_id,
-        )
-
-        job_data = response.parsed_data
-        return {
-            "id": job_data.id,
-            "status": job_data.status,
-            "conclusion": job_data.conclusion,
-            "steps": [
-                {
-                    "name": step.name,
-                    "status": step.status,
-                    "conclusion": step.conclusion,
-                    "number": step.number,
-                }
-                for step in (job_data.steps or [])
-            ],
-            "head_sha": job_data.head_sha,
-            "head_branch": job_data.head_branch,
-            "html_url": job_data.html_url,
-        }
-
-    async def _tool_get_job_logs(self, ctx: RunContext[GitHubToolContext], job_id: int) -> str:
-        """Implementation of get_job_logs tool."""
-        github = await self._get_installation_client(ctx)
-
-        try:
-            logs_response = await github.rest.actions.async_download_job_logs_for_workflow_run(
-                owner=ctx.deps.owner,
-                repo=ctx.deps.repo,
-                job_id=job_id,
+            github_client = await get_installation_client(
+                ctx.deps.settings, ctx.deps.installation_id
             )
-            logs_bytes = logs_response.content
-
-            return self._extract_logs_from_archive(logs_bytes)
-        except Exception as e:
-            return f"[Logs unavailable: {e!s}]"
-
-    async def _get_installation_client(self, ctx: RunContext[GitHubToolContext]) -> GitHub:
-        """Create GitHub App installation client with installation token."""
-        auth = AppAuthStrategy(
-            app_id=ctx.deps.settings.github_app_id,
-            private_key=ctx.deps.settings.github_private_key,
-        )
-        github_app_client = GitHub(auth=auth)
-
-        token_response = await github_app_client.rest.apps.async_create_installation_access_token(
-            installation_id=ctx.deps.installation_id
-        )
-        installation_token = token_response.parsed_data.token
-
-        return GitHub(installation_token)
-
-    @staticmethod
-    def _extract_logs_from_archive(logs_bytes: bytes) -> str:
-        """Extract logs from GitHub's zip archive format."""
-        try:
-            with zipfile.ZipFile(io.BytesIO(logs_bytes)) as zf:
-                file_list = zf.namelist()
-                if file_list:
-                    with zf.open(file_list[0]) as log_file:
-                        logs_bytes = log_file.read()
-        except zipfile.BadZipFile:
-            pass
-
-        return logs_bytes.decode("utf-8", errors="replace")
+            return await fetch_job_logs(github_client, ctx.deps.owner, ctx.deps.repo, job_id)
 
     async def diagnose_and_propose(self, context: FailureContext) -> RemediationProposal:
         """Analyze workflow failure and produce structured remediation proposal."""
@@ -191,21 +106,30 @@ class TriageAgent(RemediationAgent):
         )
 
         # Build analysis prompt - context available via deps
+        job_steps_summary = "\n".join(
+            f"  {step['number']}. {step['name']} - {step['status']} ({step['conclusion']})"
+            for step in context.job_steps
+        )
+
         prompt = f"""Analyze the GitHub Actions workflow failure:
 
 **Repository:** {context.repository_full_name}
 **Branch:** {context.branch_ref}
 **Commit:** {context.head_commit_sha}
 **Job ID:** {context.job_id}
+**Job URL:** {context.job_html_url}
 
 **Workflow:** {context.event.workflow.workflow_name} / {context.event.workflow.job_name}
+
+**Job Steps:**
+{job_steps_summary}
 
 **Logs Excerpt:**
 ```
 {context.logs_excerpt}
 ```
 
-Use get_job() to retrieve full job metadata and get_job_logs() for complete logs.
+Use get_job_logs() if you need the complete logs for deeper analysis.
 
 Diagnose the failure and provide a comprehensive remediation proposal."""
 

@@ -54,6 +54,10 @@ class FailureContext(BaseModel):
         description="Path to workflow YAML file in repository (e.g., .github/workflows/ci.yml)",
     )
     recent_commits: list[str] = Field(default_factory=list, description="Recent commit SHAs")
+    job_steps: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Job steps with name, status, conclusion, and number for each step",
+    )
 
 
 class RemediationProposal(BaseModel):
@@ -65,10 +69,6 @@ class RemediationProposal(BaseModel):
         ..., description="Estimated effort to fix: small (< 1hr), medium (1-4hrs), large (> 4hrs)"
     )
     remediation_plan: str = Field(..., description="Step-by-step plan for fixing the issue")
-    job_metadata: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Job metadata from get_job(): head_sha, head_branch, status, conclusion, steps, html_url",
-    )
     involved_files: list[str] = Field(
         default_factory=list,
         description="File paths discovered during analysis (from sg_read_file, sg_list_files, etc.)",

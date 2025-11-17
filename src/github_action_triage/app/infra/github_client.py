@@ -87,6 +87,15 @@ class GitHubContextAdapter(GitHubContextProvider):
             logs_excerpt=logs_excerpt,
             workflow_file_path=workflow_path,
             recent_commits=[job_data.head_sha],
+            job_steps=[
+                {
+                    "name": step.name,
+                    "status": step.status,
+                    "conclusion": step.conclusion,
+                    "number": step.number,
+                }
+                for step in (job_data.steps or [])
+            ],
         )
 
 

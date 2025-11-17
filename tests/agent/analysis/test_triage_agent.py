@@ -6,7 +6,9 @@ import pytest
 from pydantic import ValidationError
 
 from github_action_triage.agent.analysis.agent import TriageAgent
-from github_action_triage.agent.analysis.tools.github import GitHubToolContext
+from github_action_triage.agent.analysis.github import (
+    extract_logs_from_archive,
+)
 from github_action_triage.agent.ports import (
     FailureContext,
     FailureSummary,
@@ -86,15 +88,6 @@ async def test_diagnose_and_propose_returns_remediation_proposal(mock_settings, 
         identified_issue="Workflow failed because package-lock.json is missing",
         fix_effort="small",
         remediation_plan="1. Run npm install locally\n2. Commit package-lock.json",
-        job_metadata={
-            "id": 456,
-            "status": "completed",
-            "conclusion": "failure",
-            "head_sha": "abc123",
-            "head_branch": "main",
-            "html_url": "https://github.com/test-org/test-repo/actions/runs/123/job/456",
-            "steps": [],
-        },
         involved_files=["package.json", ".github/workflows/ci.yml"],
     )
 
@@ -111,7 +104,6 @@ async def test_diagnose_and_propose_returns_remediation_proposal(mock_settings, 
     assert result.identified_issue == expected_proposal.identified_issue
     assert result.fix_effort == expected_proposal.fix_effort
     assert result.remediation_plan == expected_proposal.remediation_plan
-    assert result.job_metadata == expected_proposal.job_metadata
     assert result.involved_files == expected_proposal.involved_files
 
     agent.agent.run.assert_called_once()
@@ -215,7 +207,6 @@ async def test_remediation_proposal_optional_fields_default():
         remediation_plan="Test plan",
     )
 
-    assert proposal.job_metadata == {}
     assert proposal.involved_files == []
 
 
@@ -226,22 +217,6 @@ async def test_diagnose_and_propose_with_all_fields_populated(mock_settings, fai
         identified_issue="Multiple Python files have linting violations",
         fix_effort="medium",
         remediation_plan="1. Run ruff check --fix\n2. Review changes\n3. Commit fixes",
-        job_metadata={
-            "id": 456,
-            "status": "completed",
-            "conclusion": "failure",
-            "head_sha": "abc123",
-            "head_branch": "main",
-            "html_url": "https://github.com/test-org/test-repo/actions/runs/123/job/456",
-            "steps": [
-                {
-                    "name": "Lint",
-                    "status": "completed",
-                    "conclusion": "failure",
-                    "number": 3,
-                }
-            ],
-        },
         involved_files=[
             "src/main.py",
             "src/utils.py",
@@ -258,35 +233,20 @@ async def test_diagnose_and_propose_with_all_fields_populated(mock_settings, fai
     result = await agent.diagnose_and_propose(failure_context)
 
     assert result.issue_title == "Ruff linting errors"
-    assert result.job_metadata["head_sha"] == "abc123"
-    assert result.job_metadata["head_branch"] == "main"
-    assert len(result.job_metadata["steps"]) == 1
     assert len(result.involved_files) == 3
     assert "src/main.py" in result.involved_files
 
 
 @pytest.mark.asyncio
 async def test_tools_are_registered_with_correct_schema(mock_settings):
-    """Validate that get_job and get_job_logs tools are registered with correct schemas."""
+    """Validate that get_job_logs tool is registered with correct schema."""
     agent = TriageAgent()
 
     # Access the function toolset tools dict
     toolset = agent.agent._function_toolset
     tools = list(toolset.tools.values())
 
-    assert len(tools) == 2
-
-    # Check get_job tool
-    get_job_tool = next((t for t in tools if t.name == "get_job"), None)
-    assert get_job_tool is not None
-    assert get_job_tool.description is not None
-    assert "GitHub Actions job" in str(get_job_tool.description)
-    # Verify parameter description is in json_schema
-    assert "job_id" in get_job_tool.function_schema.json_schema["properties"]
-    assert (
-        "job ID from the webhook"
-        in get_job_tool.function_schema.json_schema["properties"]["job_id"]["description"]
-    )
+    assert len(tools) == 1
 
     # Check get_job_logs tool
     get_job_logs_tool = next((t for t in tools if t.name == "get_job_logs"), None)
@@ -303,15 +263,8 @@ async def test_tools_are_registered_with_correct_schema(mock_settings):
 
 @pytest.mark.asyncio
 async def test_get_installation_client_uses_context_deps(mock_settings):
-    """Test that _get_installation_client properly uses RunContext deps."""
-
-    agent = TriageAgent()
-
-    # Create a mock context
-    mock_ctx = Mock()
-    mock_ctx.deps = Mock(spec=GitHubToolContext)
-    mock_ctx.deps.settings = mock_settings
-    mock_ctx.deps.installation_id = 12345
+    """Test that get_installation_client properly uses settings and installation_id."""
+    from github_action_triage.agent.analysis.github import get_installation_client
 
     # Mock GitHub client
     mock_token_response = Mock()
@@ -319,8 +272,8 @@ async def test_get_installation_client_uses_context_deps(mock_settings):
     mock_token_response.parsed_data.token = "installation-token-123"
 
     with (
-        patch("github_action_triage.agent.analysis.agent.GitHub") as MockGitHub,
-        patch("github_action_triage.agent.analysis.agent.AppAuthStrategy") as MockAppAuthStrategy,
+        patch("github_action_triage.agent.analysis.github.GitHub") as MockGitHub,
+        patch("github_action_triage.agent.analysis.github.AppAuthStrategy") as MockAppAuthStrategy,
     ):
         mock_github_instance = AsyncMock()
         mock_github_instance.rest.apps.async_create_installation_access_token.return_value = (
@@ -328,9 +281,9 @@ async def test_get_installation_client_uses_context_deps(mock_settings):
         )
         MockGitHub.side_effect = [mock_github_instance, Mock()]
 
-        await agent._get_installation_client(mock_ctx)
+        await get_installation_client(mock_settings, 12345)
 
-        # Verify AppAuthStrategy was called with settings from context
+        # Verify AppAuthStrategy was called with settings
         MockAppAuthStrategy.assert_called_once_with(
             app_id=mock_settings.github_app_id,
             private_key=mock_settings.github_private_key,
@@ -347,7 +300,7 @@ async def test_get_installation_client_uses_context_deps(mock_settings):
 
 
 def test_extract_logs_from_archive_handles_zip():
-    """Test that _extract_logs_from_archive extracts from zip format."""
+    """Test that extract_logs_from_archive extracts from zip format."""
     # Create a zip archive with log content
     log_content = b"Test log line 1\nTest log line 2\n"
     zip_buffer = io.BytesIO()
@@ -355,25 +308,25 @@ def test_extract_logs_from_archive_handles_zip():
         zf.writestr("job.log", log_content)
     zip_bytes = zip_buffer.getvalue()
 
-    result = TriageAgent._extract_logs_from_archive(zip_bytes)
+    result = extract_logs_from_archive(zip_bytes)
 
     assert result == "Test log line 1\nTest log line 2\n"
 
 
 def test_extract_logs_from_archive_handles_non_zip():
-    """Test that _extract_logs_from_archive handles non-zip bytes."""
+    """Test that extract_logs_from_archive handles non-zip bytes."""
     raw_bytes = b"Raw log content\n"
 
-    result = TriageAgent._extract_logs_from_archive(raw_bytes)
+    result = extract_logs_from_archive(raw_bytes)
 
     assert result == "Raw log content\n"
 
 
 def test_extract_logs_from_archive_handles_utf8_errors():
-    """Test that _extract_logs_from_archive handles invalid UTF-8."""
+    """Test that extract_logs_from_archive handles invalid UTF-8."""
     invalid_bytes = b"Valid text\xff\xfeInvalid UTF-8"
 
-    result = TriageAgent._extract_logs_from_archive(invalid_bytes)
+    result = extract_logs_from_archive(invalid_bytes)
 
     # Should decode with replacement characters
     assert "Valid text" in result

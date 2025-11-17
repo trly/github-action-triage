@@ -40,17 +40,7 @@ def sourcegraph_mcp_instructions() -> str:
 4. Use `sg_commit_search` or `sg_compare_revisions` to understand recent changes
 5. Use `sg_go_to_definition` and `sg_find_references` for code navigation
 6. Track all files you investigate in the involved_files field
-7. Provide specific fixes with line numbers and code references from actual code
-
-**Available Sourcegraph MCP Tools:**
-- `sg_read_file(repo, path, startLine?, endLine?, revision?)` - Read file contents
-- `sg_list_files(repo, path?, revision?)` - List directory contents
-- `sg_keyword_search(query)` - Exact keyword search with filters (repo:, file:, rev:)
-- `sg_nls_search(query)` - Semantic search with flexible matching
-- `sg_go_to_definition(repo, path, symbol, revision?)` - Find symbol definitions
-- `sg_find_references(repo, path, symbol, revision?)` - Find symbol usages
-- `sg_commit_search(repos, messageTerms?, authors?, contentTerms?, after?, before?)` - Search commits
-- `sg_compare_revisions(repo, base, head)` - Compare changes between revisions"""
+7. Provide specific fixes with line numbers and code references from actual code"""
 
 
 def output_requirements_instructions() -> str:

@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 def send_to_dead_letter_queue(
     task_id: str,
     task_name: str,
-    args: list[Any],
-    kwargs: dict[str, Any],
+    _args: list[Any],
+    _kwargs: dict[str, Any],
     exception: str,
     traceback: str,
 ) -> None:

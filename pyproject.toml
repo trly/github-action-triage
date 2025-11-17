@@ -64,14 +64,15 @@ select = [
   "ARG",
   "PTH",
 ]
+ignore = ["E501"] # Ignore line-too-long globally
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
-  "E501",   # Allow long lines (test data, assertions)
   "ARG001", # Allow unused fixtures
   "ARG005", # Allow unused lambda args (mocking)
   "SIM117", # Allow nested with statements (more readable in tests)
   "A002",   # Allow shadowing built-ins (test helper classes)
   "F841",   # Allow unused local variables (when testing side effects)
+  "N806",   # Allow uppercase mock variable names
 ]
-"src/github_action_triage/app/api.py" = ["E501"] # Allow long lines in messages
+"validate_triage_agent.py" = ["ARG001"] # Validation script

@@ -27,6 +27,9 @@ class GitHubIssueCreatorAdapter(IssueCreator):
         self, event: WorkflowRunFailureEvent, proposal: RemediationProposal
     ) -> str:
         body = self._format_issue_body(event, proposal)
+        labels = ["triage", "ci"]
+        if proposal.auto_fix_ready:
+            labels.append("ready-for-work")
 
         # Check if issue creation is disabled (for testing)
         if self._settings.disable_issue_creation:
@@ -35,7 +38,7 @@ class GitHubIssueCreatorAdapter(IssueCreator):
                 f"would have created issue:\n"
                 f"Repository: {event.repository.owner}/{event.repository.name}\n"
                 f"Title: {proposal.issue_title}\n"
-                f"Labels: triage, ci"
+                f"Labels: {', '.join(labels)}"
             )
             logger.debug(f"Issue body:\n{body}")
             return f"https://github.com/{event.repository.owner}/{event.repository.name}/issues/0"
@@ -51,7 +54,7 @@ class GitHubIssueCreatorAdapter(IssueCreator):
             repo=event.repository.name,
             title=proposal.issue_title,
             body=body,
-            labels=["triage", "ci"],
+            labels=labels,
         )
 
         return response.parsed_data.html_url
@@ -59,6 +62,7 @@ class GitHubIssueCreatorAdapter(IssueCreator):
     def _format_issue_body(
         self, event: WorkflowRunFailureEvent, proposal: RemediationProposal
     ) -> str:
+        readiness_section = self._format_readiness_section(proposal)
         return f"""## Workflow Failure Detected
 
 **Workflow**: {event.workflow.workflow_name}
@@ -74,6 +78,31 @@ class GitHubIssueCreatorAdapter(IssueCreator):
 
 {proposal.remediation_plan}
 
+{readiness_section}
+
 ---
 *This issue was automatically created by github-action-triage*
 """
+
+    def _format_readiness_section(self, proposal: RemediationProposal) -> str:
+        if proposal.auto_fix_ready:
+            confidence_str = (
+                f" (confidence: {proposal.auto_fix_confidence:.2f})"
+                if proposal.auto_fix_confidence is not None
+                else ""
+            )
+            status = f"Ready{confidence_str}"
+            rationale = proposal.auto_fix_rationale or "All criteria met for automated fix"
+        else:
+            status = "Needs Review"
+            rationale = proposal.auto_fix_rationale or "Manual review required"
+
+        blockers_section = ""
+        if proposal.auto_fix_blockers:
+            blockers_list = "\n".join(f"  - {blocker}" for blocker in proposal.auto_fix_blockers)
+            blockers_section = f"\n- **Blockers**:\n{blockers_list}"
+
+        return f"""## Automated Fix Readiness
+
+- **Status**: {status}
+- **Rationale**: {rationale}{blockers_section}"""

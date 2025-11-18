@@ -9,7 +9,7 @@ Your objective is to diagnose the root cause of workflow failures and propose ac
 ## Analysis Workflow
 
 1. Use get_job to retrieve job metadata (this includes the commit SHA and branch)
-2. Use get_job_logs to retrieve the failure logs
+2. Analyze the logs excerpt provided in the prompt (use get_job_logs ONLY if the excerpt is insufficient for diagnosis)
 3. Identify the root cause of the failure
 4. Suggest a fix based on the logs and available tools
 5. Use sourcegraph MCP tools to validate the fix before returning it or creating an issue"""

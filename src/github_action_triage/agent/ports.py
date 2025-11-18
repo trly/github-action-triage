@@ -73,6 +73,23 @@ class RemediationProposal(BaseModel):
         default_factory=list,
         description="File paths discovered during analysis (from sg_read_file, sg_list_files, etc.)",
     )
+    auto_fix_ready: bool = Field(
+        default=False,
+        description="True if the agent has enough information to safely apply an automated fix now",
+    )
+    auto_fix_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence (0–1) in automated remediation succeeding",
+    )
+    auto_fix_blockers: list[str] = Field(
+        default_factory=list,
+        description="If not ready, specific reasons/blockers preventing automated fix",
+    )
+    auto_fix_rationale: str = Field(
+        default="", description="Brief explanation supporting readiness decision"
+    )
 
 
 class GitHubContextProvider(Protocol):

@@ -66,11 +66,16 @@ def test_task_successfully_analyzes_failure(failure_context_dict, remediation_pr
         # Create mock result
         mock_result = MagicMock()
         mock_result.all_messages.return_value = []
+        mock_result.output = remediation_proposal
+
+        # Mock agent.agent.run() to be async and return mock_result
+        mock_run = AsyncMock(return_value=mock_result)
 
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.return_value = remediation_proposal
         mock_agent._last_result = mock_result
         mock_agent.agent = MagicMock()
+        mock_agent.agent.run = mock_run
         mock_agent.agent.tools = [mock_tool]
         mock_agent_class.return_value = mock_agent
 
@@ -91,11 +96,8 @@ def test_task_successfully_analyzes_failure(failure_context_dict, remediation_pr
         assert result["fix_effort"] == "small"
         assert result["issue_url"] == "https://github.com/test-org/test-repo/issues/1"
 
-        # Verify agent was called with correct context
-        mock_agent.diagnose_and_propose.assert_called_once()
-        call_args = mock_agent.diagnose_and_propose.call_args[0][0]
-        assert isinstance(call_args, FailureContext)
-        assert call_args.repository_full_name == "test-org/test-repo"
+        # Verify agent.agent.run() was called
+        mock_run.assert_called_once()
 
         # Verify issue creator was called
         mock_creator.create_issue_for_proposal.assert_called_once()
@@ -143,11 +145,16 @@ def test_task_processes_when_no_delivery_id(failure_context_dict, remediation_pr
         # Create mock result
         mock_result = MagicMock()
         mock_result.all_messages.return_value = []
+        mock_result.output = remediation_proposal
+
+        # Mock agent.agent.run() to be async and return mock_result
+        mock_run = AsyncMock(return_value=mock_result)
 
         mock_agent = AsyncMock()
         mock_agent.diagnose_and_propose.return_value = remediation_proposal
         mock_agent._last_result = mock_result
         mock_agent.agent = MagicMock()
+        mock_agent.agent.run = mock_run
         mock_agent.agent.tools = [mock_tool]
         mock_agent_class.return_value = mock_agent
 
@@ -167,8 +174,8 @@ def test_task_processes_when_no_delivery_id(failure_context_dict, remediation_pr
         # Verify Redis was NOT checked (no delivery ID)
         mock_setnx.assert_not_called()
 
-        # Verify agent was called
-        mock_agent.diagnose_and_propose.assert_called_once()
+        # Verify agent.agent.run() was called
+        mock_run.assert_called_once()
 
         # Verify issue creator was called
         mock_creator.create_issue_for_proposal.assert_called_once()
@@ -181,8 +188,12 @@ def test_task_handles_soft_timeout(failure_context_dict):
         patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
+        # Mock agent.agent.run() to raise timeout
+        mock_run = AsyncMock(side_effect=SoftTimeLimitExceeded())
+        
         mock_agent = AsyncMock()
-        mock_agent.diagnose_and_propose.side_effect = SoftTimeLimitExceeded()
+        mock_agent.agent = MagicMock()
+        mock_agent.agent.run = mock_run
         mock_agent_class.return_value = mock_agent
 
         with pytest.raises(SoftTimeLimitExceeded):
@@ -198,8 +209,12 @@ def test_task_handles_generic_exception(failure_context_dict):
         patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
+        # Mock agent.agent.run() to raise error
+        mock_run = AsyncMock(side_effect=RuntimeError("AI service unavailable"))
+        
         mock_agent = AsyncMock()
-        mock_agent.diagnose_and_propose.side_effect = RuntimeError("AI service unavailable")
+        mock_agent.agent = MagicMock()
+        mock_agent.agent.run = mock_run
         mock_agent_class.return_value = mock_agent
 
         with pytest.raises(RuntimeError, match="AI service unavailable"):

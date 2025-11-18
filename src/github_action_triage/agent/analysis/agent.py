@@ -16,7 +16,7 @@ from github_action_triage.agent.analysis.instructions import (
     sourcegraph_mcp_instructions,
 )
 from github_action_triage.agent.analysis.tools.sourcegraph import (
-    create_sourcegraph_toolset,
+    create_sourcegraph_tool,
 )
 from github_action_triage.agent.config import get_settings
 from github_action_triage.agent.ports import (
@@ -39,25 +39,21 @@ class TriageAgent(RemediationAgent):
         if self.settings.anthropic_api_key and self.settings.anthropic_api_key.get_secret_value():
             os.environ["ANTHROPIC_API_KEY"] = self.settings.anthropic_api_key.get_secret_value()
 
-        # Create Sourcegraph MCP toolset if configured
-        self.sg_toolset = create_sourcegraph_toolset(self.settings)
-        if self.sg_toolset:
-            logger.info(
-                f"TriageAgent: Sourcegraph MCP tools enabled - toolset type: {
-                    type(self.sg_toolset).__name__
-                }"
-            )
+        # Create Sourcegraph MCP builtin tool if configured
+        self.sg_tool = create_sourcegraph_tool(self.settings)
+        if self.sg_tool:
+            logger.info("TriageAgent: Sourcegraph MCP builtin tool enabled")
         else:
             logger.info("TriageAgent: Running without Sourcegraph MCP tools")
 
-        # Create agent with optional MCP toolset
-        toolsets = [self.sg_toolset] if self.sg_toolset else None
-        logger.info(f"TriageAgent: Creating agent with toolsets={toolsets is not None}")
+        # Create agent with optional MCP builtin tool
+        builtin_tools = [self.sg_tool] if self.sg_tool else None
+        logger.info(f"TriageAgent: Creating agent with builtin_tools={builtin_tools is not None}")
         self.agent = Agent(
             self.analysis_settings.model,
             deps_type=GitHubToolContext,
             output_type=RemediationProposal,
-            toolsets=toolsets,
+            builtin_tools=builtin_tools,
         )
         logger.info("TriageAgent: Agent created successfully")
 
@@ -69,11 +65,11 @@ class TriageAgent(RemediationAgent):
         self.agent.instructions(base_instructions)
         self.agent.instructions(github_context_instructions)
 
-        if self.sg_toolset:
+        if self.sg_tool:
             logger.info("TriageAgent: Registering Sourcegraph MCP instructions")
             self.agent.instructions(sourcegraph_mcp_instructions)
         else:
-            logger.info("TriageAgent: Skipping Sourcegraph MCP instructions (no toolset)")
+            logger.info("TriageAgent: Skipping Sourcegraph MCP instructions (no tool)")
 
         self.agent.instructions(output_requirements_instructions)
 

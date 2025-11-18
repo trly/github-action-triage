@@ -1,14 +1,14 @@
 import logging
 
-from pydantic_ai.builtin_tools import MCPServerTool
+from pydantic_ai.mcp import MCPServerStreamableHTTP
 
 from github_action_triage.agent.config import Settings
 
 logger = logging.getLogger(__name__)
 
 
-def create_sourcegraph_tool(settings: Settings) -> MCPServerTool | None:
-    """Create and return Sourcegraph MCP builtin tool if configured.
+def create_sourcegraph_toolset(settings: Settings) -> MCPServerStreamableHTTP | None:
+    """Create and return Sourcegraph MCP toolset if configured.
 
     See: https://sourcegraph.com/docs/api/mcp#sourcegraph-mcp-server
     """
@@ -28,14 +28,12 @@ def create_sourcegraph_tool(settings: Settings) -> MCPServerTool | None:
     logger.info(f"Sourcegraph: Connecting to {endpoint}")
 
     try:
-        tool = MCPServerTool(
-            id="sourcegraph",
-            url=endpoint,
-            authorization_token=f"token {settings.sourcegraph_token.get_secret_value()}",
-            description="Sourcegraph code search and analysis tools",
+        server = MCPServerStreamableHTTP(
+            endpoint,
+            headers={"Authorization": f"token {settings.sourcegraph_token.get_secret_value()}"},
         )
-        logger.info("Sourcegraph: MCP builtin tool created successfully")
-        return tool
+        logger.info("Sourcegraph: MCP server created successfully")
+        return server
     except Exception as e:
-        logger.warning(f"Failed to create Sourcegraph MCP tool: {e}")
+        logger.warning(f"Failed to create Sourcegraph MCP server: {e}")
         return None

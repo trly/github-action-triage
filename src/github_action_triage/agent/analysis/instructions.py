@@ -35,9 +35,12 @@ def sourcegraph_mcp_instructions() -> str:
 
 **When analyzing failures:**
 1. Extract the commit SHA and repository from the job metadata (from get_job)
-2. Use sourcegraph mcp tools to investigate the cause of the failure
-3. Track all files you investigate in the involved_files field
-4. Provide specific fixes with line numbers and code references from actual code"""
+2. Use `sg_read_file` to examine the actual code that failed at that specific commit
+3. Use `sg_keyword_search` or `sg_nls_search` to find related code patterns
+4. Use `sg_commit_search` or `sg_compare_revisions` to understand recent changes
+5. Use `sg_go_to_definition` and `sg_find_references` for code navigation
+6. Track all files you investigate in the involved_files field
+7. Provide specific fixes with line numbers and code references from actual code"""
 
 
 def output_requirements_instructions() -> str:

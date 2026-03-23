@@ -24,7 +24,7 @@ src/github_action_triage/
 │   │   ├── github_client.py # GitHub API integration
 │   │   └── github_issue_creator.py # GitHub issue creation
 │   ├── llm/                 # LLM integrations
-│   │   └── mcp.py           # MCP client configuration
+│   │   └── client.py        # LLM client configuration
 │   ├── api.py               # Core triage service orchestration
 │   ├── celery_app.py        # Celery application configuration
 │   └── factory.py           # FastAPI application factory
@@ -35,10 +35,10 @@ src/github_action_triage/
 │   │   ├── instructions.py  # Agent instruction builders
 │   │   └── tools/           # Agent tool integrations
 │   │       ├── github.py    # GitHub API tools
-│   │       └── sourcegraph.py # Sourcegraph code search tools
+│   │       └── deepsearch.py  # Sourcegraph Deep Search client
 │   ├── ports.py             # Protocol definitions for external services
 │   ├── config.py            # Agent configuration
-│   └── mcp.py               # MCP tool integrations
+│   └── __init__.py           # Agent package
 └── tasks/                   # Background task layer
     └── triage.py            # Celery tasks for async triage processing
 ```
@@ -46,7 +46,7 @@ src/github_action_triage/
 ### Key Components
 
 - **App Package**: Webhook routing, event models, infrastructure adapters, LLM clients
-- **Agent Package**: External service protocols, AI integrations, MCP tool configurations
+- **Agent Package**: External service protocols, AI integrations, Deep Search integration
 - **Tasks Package**: Celery background tasks for asynchronous processing
 - **Ports Pattern**: Protocol-based dependency injection for testability and flexibility
 
@@ -57,7 +57,7 @@ src/github_action_triage/
 3. Returns 200 OK immediately
 4. Celery worker processes task asynchronously:
    - Context gathering via `GitHubContextProvider`
-   - Diagnosis via `RemediationAgent` (with MCP tools)
+   - Diagnosis via `RemediationAgent` (via Deep Search)
    - Comment posting or issue creation via `IssueCreator`
 
 ## Development
@@ -126,7 +126,7 @@ export TRIAGE_GITHUB_PRIVATE_KEY="$(cat path/to/your-app.pem)"
 export TRIAGE_GITHUB_WEBHOOK_SECRET="your-webhook-secret"
 export TRIAGE_ANTHROPIC_API_KEY="sk-ant-..."
 export TRIAGE_SOURCEGRAPH_TOKEN="sgp_..."
-export TRIAGE_SOURCEGRAPH_MCP_URL="http://localhost:3000"
+export TRIAGE_SOURCEGRAPH_URL="http://localhost:3000"
 export TRIAGE_LOG_LEVEL="INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 export TRIAGE_DISABLE_ISSUE_CREATION="false"  # Set to "true" for testing without creating issues
 ```
@@ -177,7 +177,7 @@ docker run -d \
   -e TRIAGE_GITHUB_WEBHOOK_SECRET="your-webhook-secret" \
   -e TRIAGE_ANTHROPIC_API_KEY="sk-ant-..." \
   -e TRIAGE_SOURCEGRAPH_TOKEN="sgp_..." \
-  -e TRIAGE_SOURCEGRAPH_MCP_URL="http://localhost:3000" \
+  -e TRIAGE_SOURCEGRAPH_URL="http://localhost:3000" \
   -e TRIAGE_LOG_LEVEL="INFO" \
   --name github-action-triage \
   github-action-triage:latest
@@ -195,7 +195,7 @@ TRIAGE_GITHUB_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----
 TRIAGE_GITHUB_WEBHOOK_SECRET=your-webhook-secret
 TRIAGE_ANTHROPIC_API_KEY=sk-ant-...
 TRIAGE_SOURCEGRAPH_TOKEN=sgp_...
-TRIAGE_SOURCEGRAPH_MCP_URL=http://localhost:3000
+TRIAGE_SOURCEGRAPH_URL=http://localhost:3000
 TRIAGE_LOG_LEVEL=INFO
 ```
 

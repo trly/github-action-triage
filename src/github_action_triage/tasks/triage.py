@@ -1,12 +1,12 @@
 import asyncio
 import logging
-from collections import Counter
 from typing import Any
 
 from billiard.exceptions import SoftTimeLimitExceeded
 from celery import Task
 
 from github_action_triage.agent.analysis.agent import TriageAgent
+from github_action_triage.agent.analysis.tools.deepsearch import DeepSearchResult
 from github_action_triage.agent.config import get_settings
 from github_action_triage.agent.ports import FailureContext, RemediationProposal
 from github_action_triage.app.celery_app import app
@@ -18,41 +18,19 @@ from github_action_triage.app.infra.redis_client import set_if_not_exists
 logger = logging.getLogger(__name__)
 
 
-def _log_tool_usage(result: Any, task_id: str, delivery_id: str, repo: str) -> None:
-    """Log tool usage statistics as a table when worker completes."""
-    tool_calls = Counter()
-
-    # Count tool calls from all messages in the conversation
-    for message in result.all_messages():
-        if hasattr(message, "parts"):
-            for part in message.parts:
-                if hasattr(part, "tool_name"):
-                    tool_calls[part.tool_name] += 1
-
-    if not tool_calls:
-        logger.info(
-            f"No tool calls made for task_id={task_id}, delivery_id={delivery_id}, repo={repo}"
-        )
+def _log_deep_search_telemetry(
+    result: DeepSearchResult | None, task_id: str, delivery_id: str, repo: str
+) -> None:
+    """Log Deep Search conversation telemetry when analysis completes."""
+    if result is None:
         return
 
-    # Build markdown table
-    total_calls = sum(tool_calls.values())
-    table_rows = [
-        "| Tool | Calls | % |",
-        "|------|------:|--:|",
-    ]
-
-    for tool_name, count in sorted(tool_calls.items(), key=lambda x: x[1], reverse=True):
-        percentage = (count / total_calls) * 100
-        table_rows.append(f"| `{tool_name}` | {count} | {percentage:.1f}% |")
-
-    table_rows.append(f"| **Total** | **{total_calls}** | **100.0%** |")
-
-    tool_usage_table = "\n".join(table_rows)
-
     logger.info(
-        f"Tool usage summary for task_id={task_id}, delivery_id={delivery_id}, repo={repo}:\n"
-        f"{tool_usage_table}"
+        f"Deep Search telemetry for task_id={task_id}, delivery_id={delivery_id}, repo={repo}: "
+        f"conversation={result.conversation_name}, "
+        f"url={result.conversation_url}, "
+        f"polls={result.poll_count}, "
+        f"elapsed={result.elapsed_seconds:.1f}s"
     )
 
 
@@ -97,49 +75,6 @@ def _log_proposal_markdown(
     logger.info(
         f"RemediationProposal (issue creation disabled) for task_id={task_id}, "
         f"delivery_id={delivery_id}, repo={repo}:\n{proposal_md}"
-    )
-
-
-def _build_analysis_prompt(context: FailureContext) -> str:
-    """Build analysis prompt for the agent."""
-    job_steps_summary = "\n".join(
-        f"  {step['number']}. {step['name']} - {step['status']} ({step['conclusion']})"
-        for step in context.job_steps
-    )
-
-    return f"""Analyze the GitHub Actions workflow failure:
-
-**Repository:** {context.repository_full_name}
-**Branch:** {context.branch_ref}
-**Commit:** {context.head_commit_sha}
-**Job ID:** {context.job_id}
-**Job URL:** {context.job_html_url}
-
-**Workflow:** {context.event.workflow.workflow_name} / {context.event.workflow.job_name}
-
-**Job Steps:**
-{job_steps_summary}
-
-**Logs Excerpt:**
-```
-{context.logs_excerpt}
-```
-
-Use get_job_logs() if you need the complete logs for deeper analysis.
-
-Diagnose the failure and provide a comprehensive remediation proposal."""
-
-
-def _build_github_context(agent: TriageAgent, context: FailureContext) -> Any:
-    """Build GitHub tool context for the agent."""
-    from github_action_triage.agent.analysis.github import GitHubToolContext
-
-    return GitHubToolContext(
-        settings=agent.settings,
-        owner=context.event.repository.owner,
-        repo=context.event.repository.name,
-        installation_id=context.event.installation_id,
-        failure=context,
     )
 
 
@@ -196,17 +131,10 @@ def analyze_workflow_failure(
         settings = get_settings()
         agent = TriageAgent()
 
-        result = asyncio.run(
-            agent.agent.run(
-                _build_analysis_prompt(failure_context),
-                deps=_build_github_context(agent, failure_context),
-            )
-        )
+        proposal = asyncio.run(agent.diagnose_and_propose(failure_context))
 
-        proposal = result.output
-
-        # Log tool usage statistics
-        _log_tool_usage(result, task_id, delivery_id, repo)
+        # Log Deep Search telemetry
+        _log_deep_search_telemetry(agent._last_deep_search_result, task_id, delivery_id, repo)
 
         logger.info(
             f"Triage analysis completed: task_id={task_id}, "

@@ -343,7 +343,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "githubkit" },
     { name = "httpx" },
-    { name = "pydantic-ai-slim", extra = ["anthropic", "mcp"] },
+    { name = "pydantic-ai-slim", extra = ["anthropic"] },
     { name = "redis" },
 ]
 
@@ -363,7 +363,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.121.0" },
     { name = "githubkit", specifier = ">=0.13.5" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "pydantic-ai-slim", extras = ["anthropic", "mcp"], specifier = ">=1.16.0" },
+    { name = "pydantic-ai-slim", extras = ["anthropic"], specifier = ">=1.16.0" },
     { name = "redis", specifier = ">=5.2.0" },
 ]
 
@@ -744,9 +744,6 @@ wheels = [
 [package.optional-dependencies]
 anthropic = [
     { name = "anthropic" },
-]
-mcp = [
-    { name = "mcp" },
 ]
 
 [[package]]

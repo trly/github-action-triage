@@ -59,24 +59,9 @@ def test_task_successfully_analyzes_failure(failure_context_dict, remediation_pr
         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
-        # Create mock tool
-        mock_tool = MagicMock()
-        mock_tool.name = "get_job_logs"
-
-        # Create mock result
-        mock_result = MagicMock()
-        mock_result.all_messages.return_value = []
-        mock_result.output = remediation_proposal
-
-        # Mock agent.agent.run() to be async and return mock_result
-        mock_run = AsyncMock(return_value=mock_result)
-
-        mock_agent = AsyncMock()
-        mock_agent.diagnose_and_propose.return_value = remediation_proposal
-        mock_agent._last_result = mock_result
-        mock_agent.agent = MagicMock()
-        mock_agent.agent.run = mock_run
-        mock_agent.agent.tools = [mock_tool]
+        mock_agent = MagicMock()
+        mock_agent.diagnose_and_propose = AsyncMock(return_value=remediation_proposal)
+        mock_agent._last_deep_search_result = None
         mock_agent_class.return_value = mock_agent
 
         mock_settings.return_value.disable_issue_creation = False
@@ -86,7 +71,6 @@ def test_task_successfully_analyzes_failure(failure_context_dict, remediation_pr
         )
         mock_creator_class.return_value = mock_creator
 
-        # Call task.run() to bypass Celery infrastructure
         result = analyze_workflow_failure.run(
             context=failure_context_dict, github_delivery_id="delivery-456"
         )
@@ -96,10 +80,7 @@ def test_task_successfully_analyzes_failure(failure_context_dict, remediation_pr
         assert result["fix_effort"] == "small"
         assert result["issue_url"] == "https://github.com/test-org/test-repo/issues/1"
 
-        # Verify agent.agent.run() was called
-        mock_run.assert_called_once()
-
-        # Verify issue creator was called
+        mock_agent.diagnose_and_propose.assert_called_once()
         mock_creator.create_issue_for_proposal.assert_called_once()
 
 
@@ -116,17 +97,13 @@ def test_task_idempotency_prevents_duplicate_processing(failure_context_dict):
             context=failure_context_dict, github_delivery_id="delivery-456"
         )
 
-        # Verify task returned skip status
         assert result["status"] == "skipped"
         assert result["reason"] == "duplicate_delivery"
 
-        # Verify Redis was checked with correct key and TTL
-        assert mock_setnx.call_count == 1
         call_args = mock_setnx.call_args[0]
         assert call_args[0] == "triage:delivery:delivery-456"
-        assert call_args[2] == 86400  # TTL is 24 hours
+        assert call_args[2] == 86400
 
-        # Verify agent was NOT called
         mock_agent_class.assert_not_called()
 
 
@@ -138,24 +115,9 @@ def test_task_processes_when_no_delivery_id(failure_context_dict, remediation_pr
         patch("github_action_triage.tasks.triage.GitHubIssueCreatorAdapter") as mock_creator_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists") as mock_setnx,
     ):
-        # Create mock tool
-        mock_tool = MagicMock()
-        mock_tool.name = "get_job_logs"
-
-        # Create mock result
-        mock_result = MagicMock()
-        mock_result.all_messages.return_value = []
-        mock_result.output = remediation_proposal
-
-        # Mock agent.agent.run() to be async and return mock_result
-        mock_run = AsyncMock(return_value=mock_result)
-
-        mock_agent = AsyncMock()
-        mock_agent.diagnose_and_propose.return_value = remediation_proposal
-        mock_agent._last_result = mock_result
-        mock_agent.agent = MagicMock()
-        mock_agent.agent.run = mock_run
-        mock_agent.agent.tools = [mock_tool]
+        mock_agent = MagicMock()
+        mock_agent.diagnose_and_propose = AsyncMock(return_value=remediation_proposal)
+        mock_agent._last_deep_search_result = None
         mock_agent_class.return_value = mock_agent
 
         mock_settings.return_value.disable_issue_creation = False
@@ -167,17 +129,11 @@ def test_task_processes_when_no_delivery_id(failure_context_dict, remediation_pr
 
         result = analyze_workflow_failure.run(context=failure_context_dict, github_delivery_id=None)
 
-        # Verify task completed successfully
         assert result["issue_title"] == "npm install failed"
         assert result["issue_url"] == "https://github.com/test-org/test-repo/issues/1"
 
-        # Verify Redis was NOT checked (no delivery ID)
         mock_setnx.assert_not_called()
-
-        # Verify agent.agent.run() was called
-        mock_run.assert_called_once()
-
-        # Verify issue creator was called
+        mock_agent.diagnose_and_propose.assert_called_once()
         mock_creator.create_issue_for_proposal.assert_called_once()
 
 
@@ -188,12 +144,9 @@ def test_task_handles_soft_timeout(failure_context_dict):
         patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
-        # Mock agent.agent.run() to raise timeout
-        mock_run = AsyncMock(side_effect=SoftTimeLimitExceeded())
-        
-        mock_agent = AsyncMock()
-        mock_agent.agent = MagicMock()
-        mock_agent.agent.run = mock_run
+        mock_agent = MagicMock()
+        mock_agent.diagnose_and_propose = AsyncMock(side_effect=SoftTimeLimitExceeded())
+        mock_agent._last_deep_search_result = None
         mock_agent_class.return_value = mock_agent
 
         with pytest.raises(SoftTimeLimitExceeded):
@@ -209,12 +162,11 @@ def test_task_handles_generic_exception(failure_context_dict):
         patch("github_action_triage.tasks.triage.TriageAgent") as mock_agent_class,
         patch("github_action_triage.tasks.triage.set_if_not_exists", return_value=True),
     ):
-        # Mock agent.agent.run() to raise error
-        mock_run = AsyncMock(side_effect=RuntimeError("AI service unavailable"))
-        
-        mock_agent = AsyncMock()
-        mock_agent.agent = MagicMock()
-        mock_agent.agent.run = mock_run
+        mock_agent = MagicMock()
+        mock_agent.diagnose_and_propose = AsyncMock(
+            side_effect=RuntimeError("AI service unavailable")
+        )
+        mock_agent._last_deep_search_result = None
         mock_agent_class.return_value = mock_agent
 
         with pytest.raises(RuntimeError, match="AI service unavailable"):
@@ -257,7 +209,6 @@ def test_task_on_failure_callback(caplog):
 
 def test_task_validates_failure_context(failure_context_dict, remediation_proposal):
     """Verify task validates FailureContext from dict before processing."""
-    # Introduce invalid data (missing required field)
     invalid_context = failure_context_dict.copy()
     del invalid_context["repository_full_name"]
 

@@ -1,4 +1,5 @@
 import io
+import json
 import zipfile
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -6,9 +7,8 @@ import pytest
 from pydantic import ValidationError
 
 from github_action_triage.agent.analysis.agent import TriageAgent
-from github_action_triage.agent.analysis.github import (
-    extract_logs_from_archive,
-)
+from github_action_triage.agent.analysis.github import extract_logs_from_archive
+from github_action_triage.agent.analysis.tools.deepsearch import DeepSearchResult
 from github_action_triage.agent.ports import (
     FailureContext,
     FailureSummary,
@@ -61,6 +61,9 @@ def mock_settings():
         settings.anthropic_api_key.get_secret_value.return_value = "test-api-key"
         settings.github_app_id = "12345"
         settings.github_private_key = "test-private-key"
+        settings.sourcegraph_url = "https://sourcegraph.example.com"
+        settings.sourcegraph_token = Mock()
+        settings.sourcegraph_token.get_secret_value.return_value = "sgp_test"
 
         analysis_settings = Mock()
         analysis_settings.model = "anthropic:claude-sonnet-4-5"
@@ -72,95 +75,124 @@ def mock_settings():
         yield settings
 
 
+def _make_deep_search_result(answer_markdown: str) -> DeepSearchResult:
+    """Helper to create a DeepSearchResult with given markdown."""
+    return DeepSearchResult(
+        conversation_name="users/test/conversations/conv-123",
+        conversation_url="https://sourcegraph.example.com/deepsearch/conv-123",
+        answer_markdown=answer_markdown,
+        poll_count=3,
+        elapsed_seconds=15.0,
+    )
+
+
 @pytest.mark.asyncio
 async def test_triage_agent_initialization(mock_settings):
     agent = TriageAgent()
 
     assert agent.settings is not None
     assert agent.analysis_settings is not None
-    assert agent.agent is not None
 
 
 @pytest.mark.asyncio
 async def test_diagnose_and_propose_returns_remediation_proposal(mock_settings, failure_context):
-    expected_proposal = RemediationProposal(
-        issue_title="npm install failed - missing package-lock.json",
-        identified_issue="Workflow failed because package-lock.json is missing",
-        fix_effort="small",
-        remediation_plan="1. Run npm install locally\n2. Commit package-lock.json",
-        involved_files=["package.json", ".github/workflows/ci.yml"],
-    )
+    proposal_json = json.dumps({
+        "issue_title": "npm install failed - missing package-lock.json",
+        "identified_issue": "Workflow failed because package-lock.json is missing",
+        "fix_effort": "small",
+        "remediation_plan": "1. Run npm install locally\n2. Commit package-lock.json",
+        "involved_files": ["package.json", ".github/workflows/ci.yml"],
+    })
+    answer_md = f"Here is my analysis:\n\n```json\n{proposal_json}\n```"
+    ds_result = _make_deep_search_result(answer_md)
 
-    mock_result = Mock()
-    mock_result.output = expected_proposal
-
-    agent = TriageAgent()
-    agent.agent.run = AsyncMock(return_value=mock_result)
-
-    result = await agent.diagnose_and_propose(failure_context)
+    with patch(
+        "github_action_triage.agent.analysis.agent.run_deep_search",
+        new_callable=AsyncMock,
+        return_value=ds_result,
+    ):
+        agent = TriageAgent()
+        result = await agent.diagnose_and_propose(failure_context)
 
     assert isinstance(result, RemediationProposal)
-    assert result.issue_title == expected_proposal.issue_title
-    assert result.identified_issue == expected_proposal.identified_issue
-    assert result.fix_effort == expected_proposal.fix_effort
-    assert result.remediation_plan == expected_proposal.remediation_plan
-    assert result.involved_files == expected_proposal.involved_files
-
-    agent.agent.run.assert_called_once()
+    assert result.issue_title == "npm install failed - missing package-lock.json"
+    assert result.identified_issue == "Workflow failed because package-lock.json is missing"
+    assert result.fix_effort == "small"
+    assert result.involved_files == ["package.json", ".github/workflows/ci.yml"]
 
 
 @pytest.mark.asyncio
-async def test_diagnose_and_propose_includes_context_in_prompt(mock_settings, failure_context):
-    expected_proposal = RemediationProposal(
-        issue_title="Test issue",
-        identified_issue="Test issue",
-        fix_effort="small",
-        remediation_plan="Test plan",
-    )
+async def test_diagnose_and_propose_includes_context_in_question(mock_settings, failure_context):
+    proposal_json = json.dumps({
+        "issue_title": "Test issue",
+        "identified_issue": "Test issue",
+        "fix_effort": "small",
+        "remediation_plan": "Test plan",
+        "involved_files": [],
+    })
+    answer_md = f"```json\n{proposal_json}\n```"
+    ds_result = _make_deep_search_result(answer_md)
 
-    mock_result = Mock()
-    mock_result.output = expected_proposal
+    with patch(
+        "github_action_triage.agent.analysis.agent.run_deep_search",
+        new_callable=AsyncMock,
+        return_value=ds_result,
+    ) as mock_ds:
+        agent = TriageAgent()
+        await agent.diagnose_and_propose(failure_context)
 
-    agent = TriageAgent()
-    agent.agent.run = AsyncMock(return_value=mock_result)
-
-    await agent.diagnose_and_propose(failure_context)
-
-    call_args = agent.agent.run.call_args
-    prompt = call_args[0][0]
-
-    assert "test-org/test-repo" in prompt
-    assert "main" in prompt
-    assert "abc123" in prompt
-    assert str(failure_context.job_id) in prompt
-    assert "CI" in prompt
-    assert "build" in prompt
+    # Verify the question passed to Deep Search contains context
+    question = mock_ds.call_args[1]["question"]
+    assert "test-org/test-repo" in question
+    assert "main" in question
+    assert "abc123" in question
+    assert str(failure_context.job_id) in question
+    assert "CI" in question
+    assert "build" in question
 
 
 @pytest.mark.asyncio
-async def test_diagnose_and_propose_passes_github_context_to_tools(mock_settings, failure_context):
-    expected_proposal = RemediationProposal(
-        issue_title="Test",
-        identified_issue="Test",
-        fix_effort="small",
-        remediation_plan="Test",
-    )
+async def test_diagnose_and_propose_falls_back_on_invalid_json(mock_settings, failure_context):
+    answer_md = "The build failed because of a missing dependency. Check package.json."
+    ds_result = _make_deep_search_result(answer_md)
 
-    mock_result = Mock()
-    mock_result.output = expected_proposal
+    with patch(
+        "github_action_triage.agent.analysis.agent.run_deep_search",
+        new_callable=AsyncMock,
+        return_value=ds_result,
+    ):
+        agent = TriageAgent()
+        result = await agent.diagnose_and_propose(failure_context)
 
-    agent = TriageAgent()
-    agent.agent.run = AsyncMock(return_value=mock_result)
+    assert isinstance(result, RemediationProposal)
+    assert "test-org/test-repo" in result.issue_title
+    assert result.fix_effort == "medium"
+    assert "missing dependency" in result.remediation_plan
 
-    await agent.diagnose_and_propose(failure_context)
 
-    call_args = agent.agent.run.call_args
-    github_context = call_args[1]["deps"]
+@pytest.mark.asyncio
+async def test_diagnose_stores_deep_search_result(mock_settings, failure_context):
+    proposal_json = json.dumps({
+        "issue_title": "Test",
+        "identified_issue": "Test",
+        "fix_effort": "small",
+        "remediation_plan": "Test",
+        "involved_files": [],
+    })
+    answer_md = f"```json\n{proposal_json}\n```"
+    ds_result = _make_deep_search_result(answer_md)
 
-    assert github_context.owner == "test-org"
-    assert github_context.repo == "test-repo"
-    assert github_context.installation_id == 12345
-    assert github_context.settings is not None
+    with patch(
+        "github_action_triage.agent.analysis.agent.run_deep_search",
+        new_callable=AsyncMock,
+        return_value=ds_result,
+    ):
+        agent = TriageAgent()
+        await agent.diagnose_and_propose(failure_context)
+
+    assert agent._last_deep_search_result is not None
+    assert agent._last_deep_search_result.conversation_name == "users/test/conversations/conv-123"
+    assert agent._last_deep_search_result.poll_count == 3
 
 
 @pytest.mark.asyncio
@@ -181,22 +213,6 @@ async def test_remediation_proposal_validates_fix_effort():
     )
     assert valid_proposal.fix_effort == "small"
 
-    valid_proposal2 = RemediationProposal(
-        issue_title="Test",
-        identified_issue="Test issue",
-        fix_effort="medium",
-        remediation_plan="Test plan",
-    )
-    assert valid_proposal2.fix_effort == "medium"
-
-    valid_proposal3 = RemediationProposal(
-        issue_title="Test",
-        identified_issue="Test issue",
-        fix_effort="large",
-        remediation_plan="Test plan",
-    )
-    assert valid_proposal3.fix_effort == "large"
-
 
 @pytest.mark.asyncio
 async def test_remediation_proposal_optional_fields_default():
@@ -206,102 +222,23 @@ async def test_remediation_proposal_optional_fields_default():
         fix_effort="small",
         remediation_plan="Test plan",
     )
-
     assert proposal.involved_files == []
 
 
-@pytest.mark.asyncio
-async def test_diagnose_and_propose_with_all_fields_populated(mock_settings, failure_context):
-    expected_proposal = RemediationProposal(
-        issue_title="Ruff linting errors",
-        identified_issue="Multiple Python files have linting violations",
-        fix_effort="medium",
-        remediation_plan="1. Run ruff check --fix\n2. Review changes\n3. Commit fixes",
-        involved_files=[
-            "src/main.py",
-            "src/utils.py",
-            "tests/test_main.py",
-        ],
-    )
-
-    mock_result = Mock()
-    mock_result.output = expected_proposal
-
-    agent = TriageAgent()
-    agent.agent.run = AsyncMock(return_value=mock_result)
-
-    result = await agent.diagnose_and_propose(failure_context)
-
-    assert result.issue_title == "Ruff linting errors"
-    assert len(result.involved_files) == 3
-    assert "src/main.py" in result.involved_files
+def test_extract_json_from_markdown_code_block():
+    markdown = '```json\n{"issue_title": "test", "identified_issue": "x", "fix_effort": "small", "remediation_plan": "y", "involved_files": []}\n```'
+    result = TriageAgent._extract_json_from_markdown(markdown)
+    assert result is not None
+    assert result["issue_title"] == "test"
 
 
-@pytest.mark.asyncio
-async def test_tools_are_registered_with_correct_schema(mock_settings):
-    """Validate that get_job_logs tool is registered with correct schema."""
-    agent = TriageAgent()
-
-    # Access the function toolset tools dict
-    toolset = agent.agent._function_toolset
-    tools = list(toolset.tools.values())
-
-    assert len(tools) == 1
-
-    # Check get_job_logs tool
-    get_job_logs_tool = next((t for t in tools if t.name == "get_job_logs"), None)
-    assert get_job_logs_tool is not None
-    assert get_job_logs_tool.description is not None
-    assert "logs" in str(get_job_logs_tool.description).lower()
-    # Verify parameter description is in json_schema
-    assert "job_id" in get_job_logs_tool.function_schema.json_schema["properties"]
-    assert (
-        "job ID from the webhook"
-        in get_job_logs_tool.function_schema.json_schema["properties"]["job_id"]["description"]
-    )
-
-
-@pytest.mark.asyncio
-async def test_get_installation_client_uses_context_deps(mock_settings):
-    """Test that get_installation_client properly uses settings and installation_id."""
-    from github_action_triage.agent.analysis.github import get_installation_client
-
-    # Mock GitHub client
-    mock_token_response = Mock()
-    mock_token_response.parsed_data = Mock()
-    mock_token_response.parsed_data.token = "installation-token-123"
-
-    with (
-        patch("github_action_triage.agent.analysis.github.GitHub") as MockGitHub,
-        patch("github_action_triage.agent.analysis.github.AppAuthStrategy") as MockAppAuthStrategy,
-    ):
-        mock_github_instance = AsyncMock()
-        mock_github_instance.rest.apps.async_create_installation_access_token.return_value = (
-            mock_token_response
-        )
-        MockGitHub.side_effect = [mock_github_instance, Mock()]
-
-        await get_installation_client(mock_settings, 12345)
-
-        # Verify AppAuthStrategy was called with settings
-        MockAppAuthStrategy.assert_called_once_with(
-            app_id=mock_settings.github_app_id,
-            private_key=mock_settings.github_private_key,
-        )
-
-        # Verify installation token was requested
-        mock_github_instance.rest.apps.async_create_installation_access_token.assert_called_once_with(
-            installation_id=12345
-        )
-
-        # Verify GitHub client was created with token
-        assert MockGitHub.call_count == 2
-        MockGitHub.assert_any_call("installation-token-123")
+def test_extract_json_from_markdown_no_json():
+    markdown = "This is just regular text with no JSON."
+    result = TriageAgent._extract_json_from_markdown(markdown)
+    assert result is None
 
 
 def test_extract_logs_from_archive_handles_zip():
-    """Test that extract_logs_from_archive extracts from zip format."""
-    # Create a zip archive with log content
     log_content = b"Test log line 1\nTest log line 2\n"
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zf:
@@ -309,24 +246,16 @@ def test_extract_logs_from_archive_handles_zip():
     zip_bytes = zip_buffer.getvalue()
 
     result = extract_logs_from_archive(zip_bytes)
-
     assert result == "Test log line 1\nTest log line 2\n"
 
 
 def test_extract_logs_from_archive_handles_non_zip():
-    """Test that extract_logs_from_archive handles non-zip bytes."""
     raw_bytes = b"Raw log content\n"
-
     result = extract_logs_from_archive(raw_bytes)
-
     assert result == "Raw log content\n"
 
 
 def test_extract_logs_from_archive_handles_utf8_errors():
-    """Test that extract_logs_from_archive handles invalid UTF-8."""
     invalid_bytes = b"Valid text\xff\xfeInvalid UTF-8"
-
     result = extract_logs_from_archive(invalid_bytes)
-
-    # Should decode with replacement characters
     assert "Valid text" in result

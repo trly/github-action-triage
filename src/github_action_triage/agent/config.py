@@ -13,11 +13,11 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = Field(
         default=SecretStr(""), description="Anthropic API key for AI agents"
     )
-    sourcegraph_mcp_url: str = Field(
-        default="", description="Sourcegraph MCP server URL (optional)"
+    sourcegraph_url: str = Field(
+        default="", description="Sourcegraph instance URL for Deep Search"
     )
     sourcegraph_token: SecretStr = Field(
-        default=SecretStr(""), description="Sourcegraph API token (optional)"
+        default=SecretStr(""), description="Sourcegraph API token"
     )
 
     log_level: str = Field(
@@ -45,14 +45,10 @@ class Settings(BaseSettings):
         description="Timeout in seconds for TriageAgent analysis",
     )
 
-    # Legacy settings for backward compatibility (to be moved to remediation/config.py)
-    claude_model: str = Field(
-        default="claude-sonnet-4-20250514",
-        description="DEPRECATED: Use TRIAGE_REMEDIATION_MODEL instead. Claude model for RemediationAgent",
-    )
-    claude_max_turns: int = Field(
-        default=6,
-        description="DEPRECATED: Use TRIAGE_REMEDIATION_MAX_TURNS instead. Max turns for RemediationAgent",
+    # Deep Search polling settings
+    deepsearch_poll_interval_seconds: float = Field(
+        default=3.0,
+        description="Interval in seconds between Deep Search poll requests",
     )
 
 

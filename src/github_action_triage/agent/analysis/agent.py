@@ -1,22 +1,11 @@
+import json
 import logging
-import os
-
-from pydantic_ai import Agent, RunContext
+import re
 
 from github_action_triage.agent.analysis.config import get_analysis_settings
-from github_action_triage.agent.analysis.github import (
-    GitHubToolContext,
-    fetch_job_logs,
-    get_installation_client,
-)
-from github_action_triage.agent.analysis.instructions import (
-    base_instructions,
-    github_context_instructions,
-    output_requirements_instructions,
-    sourcegraph_mcp_instructions,
-)
-from github_action_triage.agent.analysis.tools.sourcegraph import (
-    create_sourcegraph_toolset,
+from github_action_triage.agent.analysis.tools.deepsearch import (
+    DeepSearchResult,
+    run_deep_search,
 )
 from github_action_triage.agent.config import get_settings
 from github_action_triage.agent.ports import (
@@ -29,118 +18,118 @@ logger = logging.getLogger(__name__)
 
 
 class TriageAgent(RemediationAgent):
-    """GitHub Actions failure analysis agent using pydantic-ai."""
+    """GitHub Actions failure analysis agent using Sourcegraph Deep Search."""
 
     def __init__(self):
         self.settings = get_settings()
         self.analysis_settings = get_analysis_settings()
-        self._last_result = None
-
-        if self.settings.anthropic_api_key and self.settings.anthropic_api_key.get_secret_value():
-            os.environ["ANTHROPIC_API_KEY"] = self.settings.anthropic_api_key.get_secret_value()
-
-        # Create Sourcegraph MCP toolset if configured
-        self.sg_toolset = create_sourcegraph_toolset(self.settings)
-        if self.sg_toolset:
-            logger.info(
-                f"TriageAgent: Sourcegraph MCP tools enabled - toolset type: {
-                    type(self.sg_toolset).__name__
-                }"
-            )
-        else:
-            logger.info("TriageAgent: Running without Sourcegraph MCP tools")
-
-        # Create agent with optional MCP toolset
-        toolsets = [self.sg_toolset] if self.sg_toolset else None
-        logger.info(f"TriageAgent: Creating agent with toolsets={toolsets is not None}")
-        self.agent = Agent(
-            self.analysis_settings.model,
-            deps_type=GitHubToolContext,
-            output_type=RemediationProposal,
-            toolsets=toolsets,
-        )
-        logger.info("TriageAgent: Agent created successfully")
-
-        self._register_tools()
-        self._register_instructions()
-
-    def _register_instructions(self) -> None:
-        """Register agent instructions as separate methods."""
-        self.agent.instructions(base_instructions)
-        self.agent.instructions(github_context_instructions)
-
-        if self.sg_toolset:
-            logger.info("TriageAgent: Registering Sourcegraph MCP instructions")
-            self.agent.instructions(sourcegraph_mcp_instructions)
-        else:
-            logger.info("TriageAgent: Skipping Sourcegraph MCP instructions (no toolset)")
-
-        self.agent.instructions(output_requirements_instructions)
-
-    def _register_tools(self) -> None:
-        """Register agent tools."""
-
-        @self.agent.tool(docstring_format="google", require_parameter_descriptions=True)
-        async def get_job_logs(ctx: RunContext[GitHubToolContext], job_id: int) -> str:
-            """Get logs for a specific GitHub Actions job.
-
-            Args:
-                job_id: The job ID from the webhook
-
-            Returns:
-                String containing the job logs
-            """
-            github_client = await get_installation_client(
-                ctx.deps.settings, ctx.deps.installation_id
-            )
-            return await fetch_job_logs(github_client, ctx.deps.owner, ctx.deps.repo, job_id)
+        self._last_deep_search_result: DeepSearchResult | None = None
 
     async def diagnose_and_propose(self, context: FailureContext) -> RemediationProposal:
-        """Analyze workflow failure and produce structured remediation proposal."""
-        # Build GitHub tool context with FailureContext included
-        github_context = GitHubToolContext(
-            settings=self.settings,
-            owner=context.event.repository.owner,
-            repo=context.event.repository.name,
-            installation_id=context.event.installation_id,
-            failure=context,
+        """Analyze workflow failure via Deep Search and produce remediation proposal."""
+        question = self._build_question(context)
+
+        logger.info(f"TriageAgent: Starting Deep Search analysis for job {context.job_id}")
+
+        result = await run_deep_search(
+            sourcegraph_url=self.settings.sourcegraph_url,
+            token=self.settings.sourcegraph_token.get_secret_value(),
+            question=question,
+            timeout_seconds=self.analysis_settings.timeout_seconds,
+        )
+        self._last_deep_search_result = result
+
+        logger.info(
+            f"TriageAgent: Deep Search completed - "
+            f"conversation={result.conversation_name}, "
+            f"polls={result.poll_count}, "
+            f"elapsed={result.elapsed_seconds:.1f}s"
         )
 
-        # Build analysis prompt - context available via deps
+        # Parse structured proposal from Deep Search answer
+        parsed = self._extract_json_from_markdown(result.answer_markdown)
+        if parsed:
+            try:
+                proposal = RemediationProposal.model_validate(parsed)
+                logger.info(f"TriageAgent: Parsed proposal - {proposal.issue_title}")
+                return proposal
+            except Exception as e:
+                logger.warning(f"TriageAgent: JSON parsed but validation failed: {e}")
+
+        # Fallback: construct proposal from raw markdown
+        logger.warning("TriageAgent: Could not extract structured JSON, using markdown fallback")
+        return RemediationProposal(
+            issue_title=f"CI failure in {context.repository_full_name}",
+            identified_issue=result.answer_markdown[:500] if result.answer_markdown else "Analysis completed but no structured output was returned.",
+            fix_effort="medium",
+            remediation_plan=result.answer_markdown or "See Deep Search analysis for details.",
+            involved_files=[],
+        )
+
+    def _build_question(self, context: FailureContext) -> str:
+        """Build the Deep Search analysis question from failure context."""
         job_steps_summary = "\n".join(
             f"  {step['number']}. {step['name']} - {step['status']} ({step['conclusion']})"
             for step in context.job_steps
         )
 
-        prompt = f"""Analyze the GitHub Actions workflow failure:
+        return f"""Analyze this GitHub Actions workflow failure and provide a remediation plan.
 
-**Repository:** {context.repository_full_name}
-**Branch:** {context.branch_ref}
-**Commit:** {context.head_commit_sha}
-**Job ID:** {context.job_id}
-**Job URL:** {context.job_html_url}
+Repository: {context.repository_full_name}
+Branch: {context.branch_ref}
+Commit: {context.head_commit_sha}
+Job ID: {context.job_id}
+Job URL: {context.job_html_url}
 
-**Workflow:** {context.event.workflow.workflow_name} / {context.event.workflow.job_name}
+Workflow: {context.event.workflow.workflow_name} / {context.event.workflow.job_name}
 
-**Job Steps:**
+Job Steps:
 {job_steps_summary}
 
-**Logs Excerpt:**
+Logs Excerpt:
 ```
 {context.logs_excerpt}
 ```
 
-Use get_job_logs() if you need the complete logs for deeper analysis.
+Instructions:
+1. Examine the repository code at commit {context.head_commit_sha} to understand what changed
+2. Analyze the logs to identify the root cause of the failure
+3. Check recent commits and relevant source files for context
+4. Provide your analysis as a JSON object with exactly these fields:
 
-Diagnose the failure and provide a comprehensive remediation proposal."""
+```json
+{{
+  "issue_title": "Short, actionable title for GitHub issue (< 80 characters)",
+  "identified_issue": "Precise description of the root cause",
+  "fix_effort": "small|medium|large",
+  "remediation_plan": "Step-by-step markdown plan with file paths and code examples",
+  "involved_files": ["list", "of", "file/paths", "investigated"]
+}}
+```
 
-        logger.info(f"TriageAgent: Starting analysis for job {context.job_id}")
+fix_effort values: small (< 1 hour), medium (1-4 hours), large (> 4 hours)
 
-        self._last_result = await self.agent.run(
-            prompt,
-            deps=github_context,
-        )
+Return ONLY the JSON object in a ```json code block. Do not include any other text outside the code block."""
 
-        logger.info(f"TriageAgent: Analysis complete - {self._last_result.output.issue_title}")
+    @staticmethod
+    def _extract_json_from_markdown(markdown: str) -> dict | None:
+        """Extract a JSON object from markdown, trying code blocks first."""
+        # Try ```json ... ``` blocks
+        json_block_pattern = re.compile(r"```json\s*\n(.*?)\n\s*```", re.DOTALL)
+        for match in json_block_pattern.finditer(markdown):
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                continue
 
-        return self._last_result.output
+        # Try bare JSON object
+        brace_pattern = re.compile(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", re.DOTALL)
+        for match in brace_pattern.finditer(markdown):
+            try:
+                parsed = json.loads(match.group(0))
+                if isinstance(parsed, dict) and "issue_title" in parsed:
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+
+        return None

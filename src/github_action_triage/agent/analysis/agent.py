@@ -109,7 +109,7 @@ Instructions:
 
 fix_effort values: small (< 1 hour), medium (1-4 hours), large (> 4 hours)
 
-Return ONLY the JSON object in a ```json code block. Do not include any other text outside the code block."""
+Include the JSON object in a ```json code block within your response. You may include additional markdown analysis around it."""
 
     @staticmethod
     def _extract_json_from_markdown(markdown: str) -> dict | None:

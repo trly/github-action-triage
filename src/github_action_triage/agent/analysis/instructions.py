@@ -33,12 +33,24 @@ def sourcegraph_mcp_instructions() -> str:
 
 **CRITICAL:** You do not have a local checkout of the target repository. Code inspection MUST be performed using Sourcegraph MCP tools.
 
+**Available Sourcegraph MCP tools:**
+- `read_file` - Read file contents with line ranges and revision support
+- `list_files` - List files and directories in a repository path
+- `list_repos` - Search and list repositories by name patterns
+- `keyword_search` - Exact keyword search with boolean operators and filters
+- `nls_search` - Semantic search with flexible linguistic matching
+- `go_to_definition` - Find symbol definitions from usage locations
+- `find_references` - Find all references to a symbol
+- `commit_search` - Search commits by message, author, content, and date
+- `diff_search` - Search code changes for specific patterns
+- `compare_revisions` - Compare changes between two revisions
+
 **When analyzing failures:**
 1. Extract the commit SHA and repository from the job metadata (from get_job)
-2. Use `sg_read_file` to examine the actual code that failed at that specific commit
-3. Use `sg_keyword_search` or `sg_nls_search` to find related code patterns
-4. Use `sg_commit_search` or `sg_compare_revisions` to understand recent changes
-5. Use `sg_go_to_definition` and `sg_find_references` for code navigation
+2. Use `read_file` to examine the actual code that failed at that specific commit
+3. Use `keyword_search` or `nls_search` to find related code patterns
+4. Use `commit_search` or `compare_revisions` to understand recent changes
+5. Use `go_to_definition` and `find_references` for code navigation
 6. Track all files you investigate in the involved_files field
 7. Provide specific fixes with line numbers and code references from actual code"""
 
@@ -68,7 +80,7 @@ You MUST populate ALL fields in the RemediationProposal output:
   - MUST include: head_sha, head_branch, status, conclusion, steps, html_url
 
 - **involved_files**: List of all file paths you investigated during analysis
-  - Include files read via sg_read_file, mentioned in searches, or found in logs
+  - Include files read via read_file, mentioned in searches, or found in logs
   - Use repository-relative paths (e.g., "src/main.go", not full URLs)
   - This helps track investigation scope and plan remediation
 

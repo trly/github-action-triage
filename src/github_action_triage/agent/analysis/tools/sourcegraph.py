@@ -22,8 +22,8 @@ def create_sourcegraph_toolset(settings: Settings) -> MCPServerStreamableHTTP | 
 
     # Ensure endpoint has MCP path
     endpoint = settings.sourcegraph_mcp_url
-    if not endpoint.endswith("/.api/mcp/v1"):
-        endpoint = endpoint.rstrip("/") + "/.api/mcp/v1"
+    if not endpoint.endswith("/.api/mcp"):
+        endpoint = endpoint.rstrip("/") + "/.api/mcp"
 
     logger.info(f"Sourcegraph: Connecting to {endpoint}")
 

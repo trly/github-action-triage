@@ -71,7 +71,7 @@ class RemediationProposal(BaseModel):
     remediation_plan: str = Field(..., description="Step-by-step plan for fixing the issue")
     involved_files: list[str] = Field(
         default_factory=list,
-        description="File paths discovered during analysis (from sg_read_file, sg_list_files, etc.)",
+        description="File paths discovered during analysis (from read_file, list_files, etc.)",
     )
     auto_fix_ready: bool = Field(
         default=False,
